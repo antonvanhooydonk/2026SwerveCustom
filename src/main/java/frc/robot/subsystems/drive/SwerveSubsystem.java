@@ -657,7 +657,7 @@ public class SwerveSubsystem extends SubsystemBase {
         double clippedMagnitude = (magnitude - SwerveConstants.kJoystickDeadband) / (1.0 - SwerveConstants.kJoystickDeadband);
         
         // Apply squaring/cubing to the clipped magnitude
-        double curvedMagnitude = Math.copySign(Math.pow(clippedMagnitude, SwerveConstants.kJoystickSmoothing), clippedMagnitude);
+        double curvedMagnitude = Math.copySign(Math.pow(clippedMagnitude, SwerveConstants.kJoystickInputExponent), clippedMagnitude);
 
         // Re-apply the direction sign to the new magnitude
         xSpeed = (rawX / magnitude) * curvedMagnitude;
@@ -666,7 +666,7 @@ public class SwerveSubsystem extends SubsystemBase {
 
       // Apply 1D deadband and squaring for rotation
       double rSpeed = MathUtil.applyDeadband(rawR, SwerveConstants.kJoystickDeadband);
-      rSpeed = Math.copySign(Math.pow(rSpeed, SwerveConstants.kJoystickSmoothing), rSpeed);
+      rSpeed = Math.copySign(Math.pow(rSpeed, SwerveConstants.kJoystickInputExponent), rSpeed);
 
       // If slow mode is enabled, scale down speeds for finer control
       if (isSlowMode()) {

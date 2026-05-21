@@ -37,7 +37,7 @@ public final class SwerveConstants {
   // ------------------------------------------------------------
   // Driver joystick settings
   // ------------------------------------------------------------
-  public static final double kJoystickSmoothing = 2.0; // 2 to square, 3 to cube
+  public static final double kJoystickInputExponent = 2.0; // 2 to square, 3 to cube
   public static final double kJoystickDeadband  = 0.1; // typically 0.05 to 0.15
 
   // ------------------------------------------------------------
