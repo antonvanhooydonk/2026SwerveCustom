@@ -128,7 +128,7 @@ public class RobotContainer {
     ));
 
     // toggles the drive mode: field-relative vs robot-relative
-    driverXbox.back().onTrue(driveSubsystem.toggleFieldRelativeModeCommand());
+    driverXbox.back().onTrue(driveSubsystem.toggleFieldRelativeCommand());
 
     // teleop button bindings
     RobotModeTriggers.teleop().and(driverXbox.a()).onTrue(Commands.none());
@@ -155,10 +155,10 @@ public class RobotContainer {
     RobotModeTriggers.disabled().and(driverXbox.povLeft()).onTrue(ledSubsystem.offCommand());
 
     // SysId bindings - typically on a controller with a modifier button held
-    RobotModeTriggers.test().and(driverXbox.a()).whileTrue(driveSubsystem.driveSysIdQuasistatic(SysIdRoutine.Direction.kForward));
-    RobotModeTriggers.test().and(driverXbox.b()).whileTrue(driveSubsystem.driveSysIdQuasistatic(SysIdRoutine.Direction.kReverse));
-    RobotModeTriggers.test().and(driverXbox.x()).whileTrue(driveSubsystem.driveSysIdDynamic(SysIdRoutine.Direction.kForward));
-    RobotModeTriggers.test().and(driverXbox.y()).whileTrue(driveSubsystem.driveSysIdDynamic(SysIdRoutine.Direction.kReverse));
+    RobotModeTriggers.test().and(driverXbox.a()).whileTrue(driveSubsystem.sysIdDriveQuasistatic(SysIdRoutine.Direction.kForward));
+    RobotModeTriggers.test().and(driverXbox.b()).whileTrue(driveSubsystem.sysIdDriveQuasistatic(SysIdRoutine.Direction.kReverse));
+    RobotModeTriggers.test().and(driverXbox.x()).whileTrue(driveSubsystem.sysIdDriveDynamic(SysIdRoutine.Direction.kForward));
+    RobotModeTriggers.test().and(driverXbox.y()).whileTrue(driveSubsystem.sysIdDriveDynamic(SysIdRoutine.Direction.kReverse));
   }
 
   /**

@@ -40,7 +40,7 @@ public class Autos {
    * @return the command representing the autonomous routine
    */
   public Command exampleAutoRoutine() {
-    return driveSubsystem.alignToTagCommand(1, 0, 0).withTimeout(2)
+    return driveSubsystem.alignToTagCommand(() -> 1, () -> 0, () -> 0).withTimeout(2)
       .andThen(ledSubsystem.successCommand());
   }
 }
