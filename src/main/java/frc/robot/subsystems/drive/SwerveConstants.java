@@ -34,7 +34,7 @@ public final class SwerveConstants {
   public static final double kMaxAngularSpeedRadsPerSecond = Units.rotationsToRadians(1.75); // max rotational speed, conservative: 1.0 - 1.5, competitive: 1.5 - 2.0, aggressive: 2.0 - 2.5
   public static final double kSlowModeScaling = 0.25; // scaling factor for "slow mode", typically 0.25 to 0.5, adjust as needed for driver control at low speeds
 
-  public static final boolean kUseSetpointGenerator = true && Robot.isReal();
+  public static final boolean kUseSetpointGenerator = false && Robot.isReal();
 
   // ------------------------------------------------------------
   // Driver joystick settings
@@ -87,7 +87,7 @@ public final class SwerveConstants {
   public static final double kTrackWidthMeters = Units.inchesToMeters(23); // distance between left and right wheels
   public static final double kWheelBaseMeters = Units.inchesToMeters(23); // distance between front and back wheels
   public static final double kWheelDiameterMeters = Units.inchesToMeters(4.0);
-  public static final double kWheelRadiusMeters = kWheelDiameterMeters / 2;
+  public static final double kWheelRadiusMeters = kWheelDiameterMeters / 2.0;
   public static final double kWheelCircumference = kWheelDiameterMeters * Math.PI;
   public static final double kDriveGearRatio = 6.75; // Drive gear ratio for MKi L2
   public static final double kSteerGearRatio = 21.4285714286; // Steering gear ratio

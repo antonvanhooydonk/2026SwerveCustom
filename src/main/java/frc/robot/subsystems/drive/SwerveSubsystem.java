@@ -1014,22 +1014,22 @@ public class SwerveSubsystem extends SubsystemBase {
 
       // Create a command to pathfind to the staging pose, 
       // unless we are already close enough to the target pose
-      Command staging = AutoBuilder.pathfindToPose(
+      Command stagingCommand = AutoBuilder.pathfindToPose(
         stagingPose, 
         SwerveConstants.kStagingConstraints, 
         SwerveConstants.kStagingEndVelocityMPS
       ).unless(() -> distanceTo(targetPose) < SwerveConstants.kStagingDistanceMeters + 0.3);
 
       // Create a command to pathfind precisely to the target pose
-      Command precise = AutoBuilder.pathfindToPose(
+      Command preciseCommand = AutoBuilder.pathfindToPose(
         targetPose, 
         SwerveConstants.kPrecisionConstraints, 
         0.0
       );
 
       // Chain the staging and precise commands together with a timeout
-      return staging
-        .andThen(precise)
+      return stagingCommand
+        .andThen(preciseCommand)
         .withTimeout(SwerveConstants.kAlignTimeoutSeconds)
         .withName("Drive_PathfindToPose");
     }, Set.of(this));
