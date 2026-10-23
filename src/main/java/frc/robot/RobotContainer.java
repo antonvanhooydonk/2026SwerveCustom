@@ -6,48 +6,72 @@ package frc.robot;
 
 import com.pathplanner.lib.auto.AutoBuilder;
 import com.pathplanner.lib.auto.NamedCommands;
+import com.pathplanner.lib.commands.PathfindingCommand;
 
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
+import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj2.command.button.RobotModeTriggers;
 import edu.wpi.first.wpilibj2.command.button.Trigger;
-import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
+import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction;
 
-import frc.robot.commands.Autos;
 import frc.robot.commands.Feedback;
+import frc.robot.commands.Scoring;
 import frc.robot.subsystems.climber.ClimberSubsystem;
-import frc.robot.subsystems.drive.SwerveSubsystem;
+import frc.robot.subsystems.drive.DriveSubsystem;
+import frc.robot.subsystems.elevator.ElevatorSubsystem;
+import frc.robot.subsystems.feeder.FeederSubsystem;
+import frc.robot.subsystems.flywheel.FlywheelSubsystem;
+import frc.robot.subsystems.intake.IntakeSubsystem;
 import frc.robot.subsystems.led.LEDSubsystem;
 import frc.robot.subsystems.rumble.RumbleSubsystem;
+import frc.robot.subsystems.turret.TurretSubsystem;
 import frc.robot.subsystems.vision.VisionSubsystem;
+import frc.robot.util.Utils;
 
 public class RobotContainer {
-  // Initialize our controllers
+  // Driver controllers
   private final CommandXboxController driverXbox = new CommandXboxController(0);
    
-  // The robot's subsystems are defined here...
+  // Subsystems
   private final ClimberSubsystem climberSubsystem = new ClimberSubsystem();
+  private final DriveSubsystem driveSubsystem = new DriveSubsystem();
+  private final ElevatorSubsystem elevatorSubsystem = new ElevatorSubsystem();
+  private final FeederSubsystem feederSubsystem = new FeederSubsystem();
+  private final FlywheelSubsystem flywheelSubsystem = new FlywheelSubsystem();
+  private final IntakeSubsystem intakeSubsystem = new IntakeSubsystem();
   private final LEDSubsystem ledSubsystem = new LEDSubsystem();
   private final RumbleSubsystem rumbleSubsystem = new RumbleSubsystem(driverXbox);
-  private final SwerveSubsystem driveSubsystem = new SwerveSubsystem();
+  private final TurretSubsystem turretSubsystem = new TurretSubsystem();
   private final VisionSubsystem visionSubsystem = new VisionSubsystem(driveSubsystem::addVisionMeasurement);
  
-  // Initalize command factories
-  private final Autos autos = new Autos(driveSubsystem, ledSubsystem, visionSubsystem, climberSubsystem);
+  // Coordination command factories
   private final Feedback feedback = new Feedback(ledSubsystem, rumbleSubsystem);
+  private final Scoring scoring = new Scoring(
+    driveSubsystem,
+    feederSubsystem, 
+    flywheelSubsystem,
+    turretSubsystem
+  );
 
   // Auto choosers
-  private final SendableChooser<Command> delayChooser = new SendableChooser<>();
-  private final SendableChooser<Command> autoChooser = new SendableChooser<>();
+  // NOTE: choosers hold plain values (delay seconds / PathPlanner auto names), NOT Command
+  // instances. A Command can only be composed once, so reusing a chooser's instance in
+  // andThen() throws the second time autonomous is enabled without a code restart.
+  private final SendableChooser<Double> delayChooser = new SendableChooser<>();
+  private final SendableChooser<String> autoChooser = new SendableChooser<>();
 
   // Track match state
   private boolean wasInAuto = false;
   private boolean wasInTeleop = false;
 
+  /**
+   * The container for the robot. Contains subsystems, OI devices, and commands.
+   */
   public RobotContainer() {
     // set our default driving method
     driveSubsystem.setDefaultCommand(driveSubsystem.driveCommand(
@@ -56,7 +80,7 @@ public class RobotContainer {
       () -> -1 * driverXbox.getRightX()
     ));
 
-    // register named autos
+    // register named autos - do this BEFORE any PathPlanner autos are created
     registerNamedAutos();
 
     // configure auto routines
@@ -70,6 +94,9 @@ public class RobotContainer {
    
     // silence joystick warnings during testing
     DriverStation.silenceJoystickConnectionWarning(true);
+
+    // preload PathPlanner Path finding
+    CommandScheduler.getInstance().schedule(PathfindingCommand.warmupCommand());
   }
 
   /**
@@ -80,6 +107,12 @@ public class RobotContainer {
    */
   private void registerNamedAutos() {
     NamedCommands.registerCommand("DRIVE_ALIGN_TO_TARGET", Commands.none());
+    NamedCommands.registerCommand("AIM_AT_TARGET", Commands.none());
+    NamedCommands.registerCommand("INTAKE_FUEL", Commands.none());
+    NamedCommands.registerCommand("LAUNCH_FUEL", Commands.none());
+    NamedCommands.registerCommand("PREPARE_TO_CLIMB", Commands.none());
+    NamedCommands.registerCommand("CLIMB_LEVEL_1", Commands.none());
+    NamedCommands.registerCommand("CLIMB_LEVEL_2", Commands.none());
   }
 
   /**
@@ -91,27 +124,36 @@ public class RobotContainer {
     // defined in our Autos.java or they can be PathPlanner autos located in the 
     // "/deploy/pathplanner/autos" directory. Use the auto name without the 
     // ".auto" extension for the second argument.
-    autoChooser.setDefaultOption("No auto", Commands.none());
-    autoChooser.addOption("Example", autos.exampleAutoRoutine());
-    autoChooser.addOption("Two Piece Auto", AutoBuilder.buildAuto("TwoPieceAuto"));
+    autoChooser.setDefaultOption("No auto", "");
+    addAutoToChooser("Example Auto", "ExampleAuto");
     
     // Add auto chooser to dashboard
     SmartDashboard.putData("Auto Command", autoChooser);
 
     // Configure the available auto delay options
-    delayChooser.setDefaultOption("No delay", Commands.none());
-    delayChooser.addOption("1.0 second", Commands.waitSeconds(1.0));
-    delayChooser.addOption("1.5 seconds", Commands.waitSeconds(1.5));
-    delayChooser.addOption("2.0 seconds", Commands.waitSeconds(2.0));
-    delayChooser.addOption("2.5 seconds", Commands.waitSeconds(2.5));
-    delayChooser.addOption("3.0 seconds", Commands.waitSeconds(3.0));
-    delayChooser.addOption("3.5 seconds", Commands.waitSeconds(3.5));
-    delayChooser.addOption("4.0 seconds", Commands.waitSeconds(4.0));
-    delayChooser.addOption("4.5 seconds", Commands.waitSeconds(4.5));
-    delayChooser.addOption("5.0 seconds", Commands.waitSeconds(5.0));
+    delayChooser.setDefaultOption("No delay", 0.0);
+    for (double seconds = 1.0; seconds <= 5.0; seconds += 0.5) {
+      delayChooser.addOption(seconds + " seconds", seconds);
+    }
     
     // Add delay chooser to dashboard
     SmartDashboard.putData("Auto Delay", delayChooser);
+  }
+
+  /**
+   * Add an auto to the auto chooser. The auto is built once here to validate that it 
+   * loads (and to warm up PathPlanner's file cache), but only its NAME is stored. A 
+   * fresh command is built each time autonomous starts (see getAutonomousCommand()).
+   * @param displayName The name to display in the chooser
+   * @param autoName The name of the auto to build (without the .auto extension)
+   */
+  private void addAutoToChooser(String displayName, String autoName) {
+    try {
+      AutoBuilder.buildAuto(autoName); // throws if the .auto or its paths are missing/invalid
+      autoChooser.addOption(displayName, autoName);
+    } catch (Exception ex) {
+      Utils.logError("Failed to load auto " + displayName + ": " + ex.getMessage());
+    }
   }
 
   /**
@@ -122,53 +164,72 @@ public class RobotContainer {
    * controllers or {@link edu.wpi.first.wpilibj2.command.button.CommandJoystick Flight joysticks}.
    */
   private void configureButtonBindings() {
-    // manually reset odometry & climber home position
-    driverXbox.start().onTrue(Commands.parallel(
-      driveSubsystem.resetOdometryCommand()
-    ));
+    // pit-only: 
+    // 1. zero the turret (centered) 
+    // 2. home the elevator (bottom) 
+    // 3. home the climber (straight up) 
+    // at their current positions.
+    RobotModeTriggers.disabled().and(driverXbox.back()).onTrue(Commands.parallel(
+      climberSubsystem.setHomePositionCommand(),
+      elevatorSubsystem.setHomePositionCommand(),
+      turretSubsystem.setHomePositionCommand()
+    ).ignoringDisable(true));
+
+    // toggles the drive brake mode: brake vs coast
+    RobotModeTriggers.disabled().and(driverXbox.start()).onTrue(driveSubsystem.toggleBrakeModeCommand());
 
     // toggles the drive mode: field-relative vs robot-relative
-    driverXbox.back().onTrue(driveSubsystem.toggleFieldRelativeCommand());
+    RobotModeTriggers.teleop().and(driverXbox.back()).onTrue(driveSubsystem.toggleFieldRelativeCommand());
+
+    // re-zero field-relative heading only (keeps the vision/odometry position)
+    RobotModeTriggers.teleop().and(driverXbox.start()).onTrue(driveSubsystem.resetHeadingCommand());
 
     // teleop button bindings
     RobotModeTriggers.teleop().and(driverXbox.a()).onTrue(Commands.none());
     RobotModeTriggers.teleop().and(driverXbox.b()).onTrue(Commands.none());
     RobotModeTriggers.teleop().and(driverXbox.x()).onTrue(Commands.none());
     RobotModeTriggers.teleop().and(driverXbox.y()).onTrue(Commands.none());
-    RobotModeTriggers.teleop().and(driverXbox.leftTrigger()).onTrue(Commands.none());
+    RobotModeTriggers.teleop().and(driverXbox.leftTrigger())
+      .onTrue(driveSubsystem.setSlowModeCommand(true))
+      .onFalse(driveSubsystem.setSlowModeCommand(false));
     RobotModeTriggers.teleop().and(driverXbox.leftBumper()).onTrue(Commands.none());
-    RobotModeTriggers.teleop().and(driverXbox.rightTrigger()).onTrue(Commands.none());
-    RobotModeTriggers.teleop().and(driverXbox.rightBumper()).onTrue(Commands.none());
+    RobotModeTriggers.teleop().and(driverXbox.rightTrigger()).whileTrue(scoring.passCommand());
+    RobotModeTriggers.teleop().and(driverXbox.rightBumper()).whileTrue(scoring.scoreCommand());
     RobotModeTriggers.teleop().and(driverXbox.povUp()).onTrue(Commands.none());
     RobotModeTriggers.teleop().and(driverXbox.povRight()).onTrue(Commands.none());
     RobotModeTriggers.teleop().and(driverXbox.povDown()).onTrue(Commands.none());
     RobotModeTriggers.teleop().and(driverXbox.povLeft()).onTrue(Commands.none());
 
-    // show various feedbacks for fun when disabled
-    RobotModeTriggers.disabled().and(driverXbox.a()).onTrue(ledSubsystem.flameCommand());
-    RobotModeTriggers.disabled().and(driverXbox.b()).onTrue(ledSubsystem.knightRiderCommand());
-    RobotModeTriggers.disabled().and(driverXbox.x()).onTrue(ledSubsystem.heartbeatCommand());
-    RobotModeTriggers.disabled().and(driverXbox.y()).onTrue(ledSubsystem.discoCommand());
-    RobotModeTriggers.disabled().and(driverXbox.povUp()).onTrue(ledSubsystem.teamColorsCommand());
-    RobotModeTriggers.disabled().and(driverXbox.povRight()).onTrue(ledSubsystem.meteorCommand());
-    RobotModeTriggers.disabled().and(driverXbox.povDown()).onTrue(ledSubsystem.lavaLampCommand());
-    RobotModeTriggers.disabled().and(driverXbox.povLeft()).onTrue(ledSubsystem.offCommand());
-
     // SysId bindings - typically on a controller with a modifier button held
-    RobotModeTriggers.test().and(driverXbox.a()).whileTrue(driveSubsystem.sysIdDriveQuasistatic(SysIdRoutine.Direction.kForward));
-    RobotModeTriggers.test().and(driverXbox.b()).whileTrue(driveSubsystem.sysIdDriveQuasistatic(SysIdRoutine.Direction.kReverse));
-    RobotModeTriggers.test().and(driverXbox.x()).whileTrue(driveSubsystem.sysIdDriveDynamic(SysIdRoutine.Direction.kForward));
-    RobotModeTriggers.test().and(driverXbox.y()).whileTrue(driveSubsystem.sysIdDriveDynamic(SysIdRoutine.Direction.kReverse));
+    RobotModeTriggers.test().and(driverXbox.a()).whileTrue(driveSubsystem.sysIdDriveDynamic(Direction.kForward));
+    RobotModeTriggers.test().and(driverXbox.b()).whileTrue(driveSubsystem.sysIdDriveDynamic(Direction.kReverse));
+    RobotModeTriggers.test().and(driverXbox.x()).whileTrue(driveSubsystem.sysIdDriveQuasistatic(Direction.kForward));
+    RobotModeTriggers.test().and(driverXbox.y()).whileTrue(driveSubsystem.sysIdDriveQuasistatic(Direction.kReverse));
   }
 
   /**
    * Use this to configure triggers that should respond to robot/subsystem state changes.
    */
   private void configureEventTriggers() {
-    // feedback when drive has switched to robot-relative mode
+    // feedback when climber is at level one climb position
     RobotModeTriggers.teleop()
-      .and(driveSubsystem.isFieldRelativeTrigger)
-      .onFalse(feedback.warningCommand());
+      .and(climberSubsystem.isAtLevelOneClimbPositionTrigger)
+      .onTrue(feedback.infoCommand());
+
+    // feedback when climber is at level two climb position
+    RobotModeTriggers.teleop()
+      .and(climberSubsystem.isAtLevelTwoClimbPositionTrigger)
+      .onTrue(feedback.infoCommand());
+
+    // feedback when climber is at lower limit position
+    RobotModeTriggers.teleop()
+      .and(climberSubsystem.isAtLowerLimitTrigger)
+      .onTrue(feedback.warningCommand());
+
+    // feedback when climber is at upper limit position
+    RobotModeTriggers.teleop()
+      .and(climberSubsystem.isAtUpperLimitTrigger)
+      .onTrue(feedback.warningCommand());
   }
 
   /**
@@ -178,7 +239,42 @@ public class RobotContainer {
    * @return the command to run in autonomous, or Commands.none() to run nothing
    */
   public Command getAutonomousCommand() {
-    return delayChooser.getSelected().andThen(autoChooser.getSelected());
+    // Read the selections (with null-safe defaults)
+    Double delaySeconds = delayChooser.getSelected();
+    String autoName = autoChooser.getSelected();
+
+    // Build a FRESH auto command every time so re-enabling auto never re-composes an old instance
+    Command auto = Commands.none();
+    if (autoName != null && !autoName.isEmpty()) {
+      try {
+        auto = AutoBuilder.buildAuto(autoName);
+      } catch (Exception ex) {
+        Utils.logError("Failed to build auto " + autoName + ": " + ex.getMessage());
+      }
+    }
+
+    // Return a command that first waits for the selected delay, then runs the auto
+    return Commands.waitSeconds(delaySeconds == null ? 0.0 : delaySeconds).andThen(auto);
+  }
+
+  // -------------------------------------------------------------------------------- 
+  // Match state change methods. 
+  // These are called from the main Robot class when the match state changes.
+  // --------------------------------------------------------------------------------
+
+  /**
+   * This method is called periodically while the robot is disabled.
+   */
+  public void disabledPeriodic() {
+    // Pre-match
+    if (!wasInAuto && !wasInTeleop) {
+      // Seed the pose heading for the current alliance (once per alliance change)
+      driveSubsystem.seedHeadingForAlliance();
+
+      // Update the dashboard with the current auto starting pose
+      // The chooser value is the PathPlanner auto name ("" = no auto)
+      driveSubsystem.publishStartingPoseAlignment(autoChooser::getSelected);
+    }
   }
 
   /**
@@ -190,7 +286,15 @@ public class RobotContainer {
     wasInTeleop = false;
 
     // Initialze subsystems
+    ledSubsystem.autonomousInit();
+    rumbleSubsystem.autonomousInit();
+    climberSubsystem.autonomousInit();
     driveSubsystem.autonomousInit();
+    elevatorSubsystem.autonomousInit();
+    feederSubsystem.autonomousInit();
+    flywheelSubsystem.autonomousInit();
+    intakeSubsystem.autonomousInit();
+    turretSubsystem.autonomousInit();
   }
 
   /**
@@ -200,24 +304,54 @@ public class RobotContainer {
     // Track state change
     wasInTeleop = true;
 
-    // When testing we sometimes enable the robot in teleop and skip autoonomous.
-    // If that is the case, init autonomous instead of teleop.
+    // When testing, we sometimes enable the robot in teleop and skip autonomous.
+    // If that is the case, init autonomous before initialization of teleop.
+    // This doesn't call the select auto command, it just initializes the 
+    // subsystems for autonomous mode.
     if (!wasInAuto) {
+      ledSubsystem.autonomousInit();
+      rumbleSubsystem.autonomousInit();
+      climberSubsystem.autonomousInit();
       driveSubsystem.autonomousInit();
-    } else {
-      driveSubsystem.teleopInit();
+      elevatorSubsystem.autonomousInit();
+      feederSubsystem.autonomousInit();
+      flywheelSubsystem.autonomousInit();
+      intakeSubsystem.autonomousInit();
+      turretSubsystem.autonomousInit();
     }
+
+    // Initialize subsystems
+    ledSubsystem.teleopInit();
+    rumbleSubsystem.teleopInit();
+    climberSubsystem.teleopInit();
+    driveSubsystem.teleopInit();
+    elevatorSubsystem.teleopInit();
+    feederSubsystem.teleopInit();
+    flywheelSubsystem.teleopInit();
+    intakeSubsystem.teleopInit();
+    turretSubsystem.teleopInit();
   }
 
   /**
    * Initializes all subsystems for post match mode. Should be called from Robot.disabledInit().
    */
-  public void postMatch() {
-    // Clean up post match
+  public void disabledInit() {
+    // Post match comes after teleop
     if (wasInTeleop) {
+      // Reset state change tracking
       wasInAuto = false;
       wasInTeleop = false;
+
+      // Clean up subsystems
+      ledSubsystem.postMatch();
+      rumbleSubsystem.postMatch();
+      climberSubsystem.postMatch();
       driveSubsystem.postMatch();
+      elevatorSubsystem.postMatch();
+      feederSubsystem.postMatch();
+      flywheelSubsystem.postMatch();
+      intakeSubsystem.postMatch();
+      turretSubsystem.postMatch();
     }
   }
 }

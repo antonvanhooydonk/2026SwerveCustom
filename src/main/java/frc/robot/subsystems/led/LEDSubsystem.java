@@ -4,18 +4,9 @@
 
 package frc.robot.subsystems.led;
 
-import static edu.wpi.first.units.Units.Meters;
-import static edu.wpi.first.units.Units.MetersPerSecond;
-import static edu.wpi.first.units.Units.Percent;
-import static edu.wpi.first.units.Units.Second;
-import static edu.wpi.first.units.Units.Seconds;
-
-import java.util.Map;
-
 import edu.wpi.first.wpilibj.AddressableLED;
 import edu.wpi.first.wpilibj.AddressableLEDBuffer;
 import edu.wpi.first.wpilibj.LEDPattern;
-import edu.wpi.first.wpilibj.LEDPattern.GradientType;
 import edu.wpi.first.wpilibj.util.Color;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
@@ -36,13 +27,13 @@ public class LEDSubsystem extends SubsystemBase {
    */
   public LEDSubsystem() {
     // Initialize LED strip
-    ledBuffer = new AddressableLEDBuffer(LEDConstants.kLEDLength);
+    ledBuffer = new AddressableLEDBuffer(LEDConstants.kLEDCount);
     ledStrip = new AddressableLED(PWMConstants.kLEDStringID);
     ledStrip.setLength(ledBuffer.getLength());
     ledStrip.setData(ledBuffer);
     ledStrip.start();
 
-    // Set subsystem default command to turn off LEDs when no other command is running
+    // Set subsystem default command
     setDefaultCommand(offCommand());
     
     // Output initialization progress
@@ -54,56 +45,148 @@ public class LEDSubsystem extends SubsystemBase {
     ledStrip.setData(ledBuffer);
   }
 
-  // ==================== LED Control Methods ====================
+  // ----------------------------------------------------------------------------------------
+  // Private state methods
+  // ----------------------------------------------------------------------------------------
 
   /**
-   * Creates a command that runs a pattern on the entire LED strip until interrupted. 
-   * The pattern will be applied to the entire strip, and will continue to run until 
-   * the command is interrupted or replaced by another command.
-   * @param pattern the LED pattern to run
+   * Cancels the currently running command on the LED subsystem, if any.
+   * The default command will take over after cancellation.
    */
-  private Command runPattern(LEDPattern pattern) {
-    return run(() -> pattern
-      .atBrightness(Percent.of(LEDConstants.kBrightness * 100))
-      .applyTo(ledBuffer))
-    .ignoringDisable(true);
+  private void cancelCurrentCommand() {
+    Command current = getCurrentCommand();
+    if (current != null) {
+      current.cancel();
+    }
   }
 
-  // ==================== Command Factories ====================
-  
+  // ----------------------------------------------------------------------------------------
+  // Predefined LED patterns
+  // ----------------------------------------------------------------------------------------
+
+  /**
+   * Returns a pattern that turns off all LEDs (black).
+   * @return LEDPattern that turns off all LEDs
+   */
+  private LEDPattern offPattern() {
+    return LEDPattern.solid(Color.kBlack);
+  }
+
+  /**
+   * Returns a solid lime pattern that indicates success.
+   * @return LEDPattern that indicates success
+   */
+  private LEDPattern successPattern() {
+    return LEDPattern.solid(Color.kLime);
+  }
+
+  /**
+   * Returns a solid cyan pattern that indicates information.
+   * @return LEDPattern that indicates information
+   */
+  private LEDPattern infoPattern() {
+    return LEDPattern.solid(Color.kCyan);
+  }
+
+  /**
+   * Returns a solid gold pattern that indicates a warning.
+   * @return LEDPattern that indicates a warning
+   */
+  private LEDPattern warningPattern() {
+    return LEDPattern.solid(Color.kGold);
+  }
+
+  /**
+   * Returns a solid magenta pattern that indicates an error.
+   * @return LEDPattern that indicates an error
+   */
+  private LEDPattern errorPattern() {
+    return LEDPattern.solid(Color.kMagenta);
+  }
+
+  // ----------------------------------------------------------------------------------------
+  // Public methods to run at different phases of the match
+  // ----------------------------------------------------------------------------------------
+
+  /**
+   * Initializes the LED subsystem at the start of the autonomous phase.
+   */
+  public void autonomousInit() {
+    cancelCurrentCommand();
+    Utils.logInfo("LED subsystem initialized for autonomous");
+  }
+
+  /**
+   * Initializes the LED subsystem at the start of the teleop phase.
+   */
+  public void teleopInit() {
+    cancelCurrentCommand();
+    Utils.logInfo("LED subsystem initialized for teleop");
+  }
+
+  /**
+   * Initializes the LED subsystem for post match (disabled) state.
+   */
+  public void postMatch() {
+    cancelCurrentCommand();
+    Utils.logInfo("LED subsystem initialized for post match");
+  }
+
+  // ----------------------------------------------------------------------------------------
+  // Private Command Factory Methods
+  // ----------------------------------------------------------------------------------------
+
+  /**
+   * Applies animated or solid patterns to the LED strip.
+   * Append .withTimeout() to the returned command to have it run for a specific duration.
+   * @param pattern The LED pattern to apply
+   * @return Command that applies the specified LED pattern
+   */
+  private Command runPatternCommand(LEDPattern pattern) {
+    LEDPattern dimmed = pattern.atBrightness(LEDConstants.kBrightness);
+    return run(() -> dimmed.applyTo(ledBuffer))
+      .ignoringDisable(true);
+  }
+
+  // ----------------------------------------------------------------------------------------
+  // Public Command Factory Methods
+  // ----------------------------------------------------------------------------------------
+
   /**
    * Command to set the LED strip off until another command takes over
    * @return Command that sets LED display off
    */
   public Command offCommand() {
-    return runPattern(LEDPattern.solid(Color.kBlack))
-      .withName("LED_Off");
+    return runPatternCommand(offPattern()).withName("LED_Off");
   }
   
   /**
-   * Command to indicate success state until interrupted
+   * Command to briefly indicate success state
    * @return Command with success LED
    */
   public Command successCommand() {
-    return runPattern(LEDPattern.solid(Color.kGreen).breathe(Seconds.of(0.5)))
+    return runPatternCommand(successPattern())
+      .withTimeout(1.0)
       .withName("LED_Success");
   }
   
   /**
-   * Command to indicate info state until interrupted
+   * Command to briefly indicate info state
    * @return Command with info LED
    */
   public Command infoCommand() {
-    return runPattern(LEDPattern.solid(Color.kDarkViolet).breathe(Seconds.of(0.5)))
+    return runPatternCommand(infoPattern())
+      .withTimeout(1.0)
       .withName("LED_Info");
   }
   
   /**
-   * Command to indicate warning state until interrupted
+   * Command to briefly indicate warning state
    * @return Command with warning LED
    */
   public Command warningCommand() {
-    return runPattern(LEDPattern.solid(Color.kYellow).breathe(Seconds.of(0.5)))
+    return runPatternCommand(warningPattern())
+      .withTimeout(1.0)
       .withName("LED_Warning");
   }
   
@@ -112,165 +195,6 @@ public class LEDSubsystem extends SubsystemBase {
    * @return Command with error LED
    */
   public Command errorCommand() {
-    return runPattern(LEDPattern.solid(Color.kRed).breathe(Seconds.of(0.5)))
-      .withName("LED_Error");
-  }
-  
-  /**
-   * Command to set idle feedback until interrupted
-   * @return Command that sets idle LED display
-   */
-  public Command idleCommand() {
-    return runPattern(LEDPattern.solid(Color.kSlateBlue).breathe(Seconds.of(2.0)))
-      .withName("LED_Idle");
-  }
-  
-  /**
-   * Command to display team colors (scrolling gradient) until interrupted  
-   * @return Command that scrolls between green & copper
-   */
-  public Command teamColorsCommand() {
-    return runPattern(
-      LEDPattern.gradient(
-        GradientType.kContinuous, 
-        Color.kDarkGreen, 
-        Color.kDarkOrange
-      )
-      .scrollAtRelativeSpeed(Percent.per(Second).of(25))
-    )
-    .withName("LED_TeamColors");
-  }
-
-  /**
-   * Command to display candy cane pattern (scrolling stripes) until interrupted
-   * @return Command that shows rotating red and white stripes
-   */
-  public Command candyCaneCommand() {
-    return runPattern(
-      LEDPattern
-      .steps(Map.of(0.0, Color.kRed, 0.5, Color.kWhite))
-      .scrollAtAbsoluteSpeed(MetersPerSecond.of(0.5), Meters.of(1.0 / 60.0))
-    )
-    .withName("LED_CandyCane");
-  }
-
-  /**
-   * Command to display disco pattern (scrolling rainbow) until interrupted
-   * @return Command that shows random flashing rainbow colors
-   */
-  public Command discoCommand() {
-    return runPattern(
-      LEDPattern.gradient(
-        GradientType.kContinuous,
-        Color.kMagenta, 
-        Color.kYellow, 
-        Color.kCyan, 
-        Color.kHotPink,
-        Color.kLime, 
-        Color.kOrange, 
-        Color.kBlue, 
-        Color.kMagenta
-      )
-      .scrollAtAbsoluteSpeed(MetersPerSecond.of(3.5), Meters.of(1.0 / 60.0))
-      .blink(Seconds.of(0.07))
-    )
-    .withName("LED_Disco");
-  }
-
-  /**
-   * Command to display a fire/flame effect until interrupted.
-   * Simulates flames using a warm gradient scrolling upward rapidly.
-   * @return Command that shows an animated fire effect
-   */
-  public Command flameCommand() {
-    return runPattern(
-      LEDPattern.gradient(
-        GradientType.kContinuous,
-        Color.kBlack, 
-        Color.kDarkRed, 
-        Color.kOrangeRed, 
-        Color.kOrange, 
-        Color.kYellow, 
-        Color.kBlack
-      )
-      .scrollAtAbsoluteSpeed(MetersPerSecond.of(1.2), Meters.of(1.0 / 60.0))
-      .breathe(Seconds.of(0.4))
-    )
-    .withName("LED_Flame");
-  }
-
-  /**
-   * Command to display a heartbeat pulse effect until interrupted.
-   * Double-pulses in red like a cardiac rhythm.
-   * @return Command that shows a heartbeat pulse
-   */
-  public Command heartbeatCommand() {
-    return runPattern(
-      LEDPattern
-      .solid(Color.kRed)
-      .breathe(Seconds.of(0.3))
-      .overlayOn(LEDPattern.solid(Color.kDarkRed))
-    )
-    .withName("LED_Heartbeat");
-  }
-
-  /**
-   * Command to display a meteor/comet trail effect until interrupted.
-   * A bright white head fades to a cool blue tail, shooting across the strip.
-   * @return Command that shows a streaking meteor
-   */
-  public Command meteorCommand() {
-    return runPattern(
-      LEDPattern.gradient(
-        GradientType.kDiscontinuous,
-        Color.kWhite, 
-        Color.kCyan, 
-        Color.kBlue, 
-        Color.kBlack
-      )
-      .scrollAtAbsoluteSpeed(MetersPerSecond.of(1.5), Meters.of(1.0 / 60.0))
-    )
-    .withName("LED_Meteor");
-  }
-
-  /**
-   * Command to display a Knight Rider / KITT scanner effect until interrupted.
-   * A bright red "eye" bounces back and forth across the strip.
-   * @return Command that shows a scanning red light
-   */
-  public Command knightRiderCommand() {
-    return runPattern(
-      LEDPattern.gradient(
-        GradientType.kDiscontinuous,
-        Color.kBlack, 
-        Color.kDarkRed, 
-        Color.kRed, 
-        Color.kDarkRed, 
-        Color.kBlack
-      )
-      .scrollAtAbsoluteSpeed(MetersPerSecond.of(1.0), Meters.of(1.0 / 60.0))
-    )
-    .withName("LED_KnightRider");
-  }
-
-  /**
-   * Command to display a lava lamp / slow plasma effect until interrupted.
-   * Deep purples and reds blending and drifting slowly.
-   * @return Command that shows a hypnotic lava lamp effect
-   */
-  public Command lavaLampCommand() {
-    return runPattern(
-      LEDPattern.gradient(
-        GradientType.kContinuous,
-        Color.kPurple, 
-        Color.kDarkRed, 
-        Color.kDeepPink, 
-        Color.kDarkMagenta, 
-        Color.kPurple
-      )
-      .scrollAtRelativeSpeed(Percent.per(Second).of(8))
-      .breathe(Seconds.of(2.5))
-    )
-    .withName("LED_LavaLamp");
+    return runPatternCommand(errorPattern()).withName("LED_Error");
   }
 }

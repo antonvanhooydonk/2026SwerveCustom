@@ -13,45 +13,39 @@ public final class ElevatorConstants {
   // ------------------------------------------------------------
   // Physical constants - adjust for your robot
   // ------------------------------------------------------------
-  public static final double kGearRatio = 10.0; // Motor rotations per output shaft rotation
-  public static final double kSpoolDiameterMeters = Units.inchesToMeters(1.5); // Diameter of the spool/sprocket
-  public static final double kSpoolCircumferenceMeters = kSpoolDiameterMeters * Math.PI;
-  public static final boolean kFollowerOpposesLeader = true; // True if follower is mechanically mirrored
-
-  // ------------------------------------------------------------
-  // Height limits - adjust for your robot
-  // ------------------------------------------------------------
-  public static final double kMinHeightMeters = 0.0; // Bottom of travel (home position)
-  public static final double kMaxHeightMeters = Units.inchesToMeters(50.0); // Top of travel
+  public static final double kCarriageMassKg            = 6.0;  // total moving mass (carriage + stages as seen by the spool)
+  public static final double kGearRatio                 = 10.0; // Motor rotations per output shaft rotation
+  public static final double kSpoolDiameterMeters       = Units.inchesToMeters(1.5);
+  public static final double kSpoolCircumferenceMeters  = kSpoolDiameterMeters * Math.PI;
+  public static final double kMinHeightMeters           = Units.inchesToMeters(0.0);
+  public static final double kMaxHeightMeters           = Units.inchesToMeters(50.0);
 
   // ------------------------------------------------------------
   // Preset heights - adjust for your robot's scoring positions
   // ------------------------------------------------------------
-  public static final double kHeightStowMeters   = Units.inchesToMeters(0.0);
-  public static final double kHeightL1Meters     = Units.inchesToMeters(12.0);
-  public static final double kHeightL2Meters     = Units.inchesToMeters(24.0);
-  public static final double kHeightL3Meters     = Units.inchesToMeters(36.0);
-  public static final double kHeightL4Meters     = Units.inchesToMeters(50.0);
+  public static final double kHeightL1Meters  = Units.inchesToMeters(12.0);
+  public static final double kHeightL2Meters  = Units.inchesToMeters(24.0);
+  public static final double kHeightL3Meters  = Units.inchesToMeters(36.0);
+  public static final double kHeightL4Meters  = Units.inchesToMeters(50.0);
 
   // ------------------------------------------------------------
   // Control constants
   // ------------------------------------------------------------
-  public static final double kHeightToleranceMeters = Units.inchesToMeters(0.5); // Tolerance for isAtTarget
-
-  // ------------------------------------------------------------
-  // Homing constants
-  // Without limit switches, we drive slowly down until stalled
-  // ------------------------------------------------------------
-  public static final double kHomingVoltage              = -1.0; // Volts - slow downward voltage
-  public static final double kHomingVelocityThresholdMPS = 0.01; // m/s - velocity threshold to detect hard stop
+  public static final double kHeightToleranceMeters   = Units.inchesToMeters(0.5); // Tolerance for isAtTarget
+  public static final double kStallCurrentThreshold   =  25.5; // Amps - 85% of smart current limit
+  public static final double kStallVelocityThreshold  = Units.inchesToMeters(0.25); // Meters/sec - indicates motor not moving
+  public static final double kMoveTimeoutSeconds      =   3.0;
+  public static final double kManualUpVoltage         =  12.0;   // Voltage for manual up control
+  public static final double kManualDownVoltage       = -12.0;   // Voltage for manual down control
 
   // ------------------------------------------------------------
   // MotionMagic constraints
   // Tuning: start low, increase until motion is fast but smooth
   // ------------------------------------------------------------
-  public static final double kCruiseVelocityMPS = 1.0;  // meters per second
-  public static final double kAccelerationMPS2  = 2.0;  // meters per second squared
-  public static final double kJerkMPS3          = 20.0; // meters per second cubed (0 to disable)
+  public static final double kMaxFreeRPS     = 6000.0 / 60.0; // Max free speed of the motor in rotations per second
+  public static final double kCruiseVelocity = Math.ceil(0.75 * kMaxFreeRPS); // 75% - 80% of max free rps
+  public static final double kAcceleration   = kCruiseVelocity * 2.5; // set to 2x - 5x cruise velocity
+  public static final double kJerk           = kAcceleration * 10; // set to 10x acceleration
 
   // ------------------------------------------------------------
   // PID / Feedforward gains (tune with SysId)
@@ -62,5 +56,5 @@ public final class ElevatorConstants {
   public static final double kS = 0.0;  // Static friction - from SysId
   public static final double kV = 0.0;  // Velocity feedforward - from SysId
   public static final double kA = 0.0;  // Acceleration feedforward - from SysId
-  public static final double kG = 0.0;  // Gravity compensation - tune until elevator holds position
+  public static final double kG = 0.1;  // Gravity compensation - tune until elevator holds position
 }

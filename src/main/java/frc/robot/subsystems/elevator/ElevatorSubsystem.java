@@ -4,29 +4,41 @@
 
 package frc.robot.subsystems.elevator;
 
+import static edu.wpi.first.units.Units.Rotations;
+import static edu.wpi.first.units.Units.RotationsPerSecond;
 import static edu.wpi.first.units.Units.Volts;
 
-import com.ctre.phoenix6.SignalLogger;
+import java.util.Arrays;
+
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
-import com.ctre.phoenix6.controls.Follower;
 import com.ctre.phoenix6.controls.MotionMagicVoltage;
 import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.GravityTypeValue;
 import com.ctre.phoenix6.signals.InvertedValue;
-import com.ctre.phoenix6.signals.MotorAlignmentValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
+import com.ctre.phoenix6.sim.ChassisReference;
+import com.ctre.phoenix6.sim.TalonFXSimState;
 
 import edu.wpi.first.math.MathUtil;
+import edu.wpi.first.math.filter.Debouncer;
+import edu.wpi.first.math.system.plant.DCMotor;
 import edu.wpi.first.util.sendable.SendableBuilder;
+import edu.wpi.first.wpilibj.RobotBase;
+import edu.wpi.first.wpilibj.RobotController;
+import edu.wpi.first.wpilibj.simulation.ElevatorSim;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
-import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import edu.wpi.first.wpilibj2.command.button.Trigger;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 
 import frc.robot.Constants.CANConstants;
+import frc.robot.Constants.TuningConstants;
+import frc.robot.util.Conversions;
+import frc.robot.util.RobotVisualizer;
+import frc.robot.util.TalonFXFactory.MotorPair;
+import frc.robot.util.TalonFXFactory;
 import frc.robot.util.Utils;
 
 /**
@@ -40,64 +52,79 @@ import frc.robot.util.Utils;
  * 4. Tune kP until fast response without overshoot
  *
  * IMPORTANT: Since there are no limit switches, the elevator must be at the
- * bottom (home) position when the robot code starts, as the encoder is zeroed
- * at construction. Call homeCommand() to return to home and rezero if needed.
+ * bottom (home) position when the robot is POWERED ON (the TalonFX zeroes its position
+ * on power-up). A code restart does not re-zero. Use setHomePositionCommand() to
+ * re-zero while disabled with the elevator at the bottom.
  */
 public class ElevatorSubsystem extends SubsystemBase {
   // Hardware - leader and follower motors
   private final TalonFX leaderMotor;
   private final TalonFX followerMotor;
-  private final TalonFXConfiguration leaderConfig;
 
   // Control requests
   private final MotionMagicVoltage motionMagicRequest;
-  private final VoltageOut voltageRequest;
 
   // Target position (for telemetry)
-  private double targetPositionMeters = 0.0;
-
-  // Whether the elevator is homing
-  private boolean homing = false;
+  private double targetHeightMeters = 0.0;
 
   // SysId routine
   private final SysIdRoutine sysIdRoutine;
+
+  // Tuning constants from the SmartDashboard (for real-time tuning)
+  private double[] lastTuning = new double[0];
+
+  // Simulation (null on a real robot)
+  private ElevatorSim elevatorSim;
+  private TalonFXSimState leaderSim;
 
   /**
    * Creates a new ElevatorSubsystem
    */
   public ElevatorSubsystem() {
-    // Initialize hardware
-    leaderMotor = new TalonFX(CANConstants.kElevatorLeaderMotorID);
-    followerMotor = new TalonFX(CANConstants.kElevatorFollowerMotorID);
-    leaderConfig = new TalonFXConfiguration();
+    // Create leader and follower motors
+    MotorPair motors = TalonFXFactory.createMotorPair(
+      CANConstants.kElevatorLeaderMotorID,
+      CANConstants.kElevatorFollowerMotorID,
+      getMotorConfig(),
+      false
+    );
+    leaderMotor = motors.leader();
+    followerMotor = motors.follower();
 
     // Initialize control requests
     motionMagicRequest = new MotionMagicVoltage(0).withSlot(0);
-    voltageRequest = new VoltageOut(0);
 
-    // Configure motors
-    configureMotors();
-
-    // Zero encoder at startup - elevator must be at home position
-    zeroEncoder();
+    // NOTE: Do NOT zero the encoder here. The TalonFX keeps its position across a robot code
+    // restart and only resets to 0 on a power cycle. Use setHomePositionCommand() (disabled-only).
+    leaderMotor.getPosition().waitForUpdate(0.25); // make sure the logged value is not a stale 0
+    Utils.logInfo("Elevator startup height (m): " + Utils.showDouble(getHeightMeters()));
 
     // Initialize SysId routine (leader motor only)
     sysIdRoutine = new SysIdRoutine(
-      new SysIdRoutine.Config(
-        null,   // Default ramp rate (1 V/s)
-        null,   // Default step voltage (7V)
-        null,   // Default timeout (10s)
-        state -> SignalLogger.writeString("elevator-sysid-state", state.toString())
-      ),
+      new SysIdRoutine.Config(null, null, null, null),
       new SysIdRoutine.Mechanism(
-        volts -> leaderMotor.setControl(voltageRequest.withOutput(volts.in(Volts))),
-        null,
+        volts -> leaderMotor.setControl(new VoltageOut(volts.in(Volts))),
+        log -> log.motor("leader")
+          .voltage(Volts.of(leaderMotor.getMotorVoltage().getValueAsDouble()))
+          .angularPosition(Rotations.of(leaderMotor.getPosition().getValueAsDouble()))
+          .angularVelocity(RotationsPerSecond.of(leaderMotor.getVelocity().getValueAsDouble())),
         this
       )
     );
 
+    // Set default command
+    setDefaultCommand(holdPositionCommand());
+
     // Add data to dashboard
     SmartDashboard.putData("Elevator", this);
+
+    // Initialize tuning constants on the SmartDashboard for real-time tuning
+    initTuningDashboard();
+
+    // Initialize simulation if running in simulation mode
+    if (RobotBase.isSimulation()) {
+      initSimulation();
+    }
 
     // Output initialization progress
     Utils.logInfo("Elevator subsystem initialized");
@@ -105,87 +132,180 @@ public class ElevatorSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
-    // Nothing needed - TalonFX handles control loop onboard
+    getTuningFromDashboard();
+  }
+  
+  @Override
+  public void simulationPeriodic() {
+    // 1. Tell the simulated TalonFX what the battery is doing
+    leaderSim.setSupplyVoltage(RobotController.getBatteryVoltage());
+
+    // 2. Feed the voltage the TalonFX is applying (MotionMagic, VoltageOut, etc.) to the physics
+    elevatorSim.setInputVoltage(leaderSim.getMotorVoltage());
+    elevatorSim.update(0.020);
+
+    // 3. Write the physics result back into the TalonFX
+    leaderSim.setRawRotorPosition(Conversions.metersToRotations(
+      elevatorSim.getPositionMeters(),
+      ElevatorConstants.kGearRatio,
+      ElevatorConstants.kSpoolCircumferenceMeters
+    ));
+    leaderSim.setRotorVelocity(Conversions.metersToRotations(
+      elevatorSim.getVelocityMetersPerSecond(),
+      ElevatorConstants.kGearRatio,
+      ElevatorConstants.kSpoolCircumferenceMeters
+    ));
+
+    // 4. Update the visualization
+    RobotVisualizer.setElevatorHeight(elevatorSim.getPositionMeters());
+  }
+  
+  /**
+   * Initialize the simulation for the elevator subsystem. This sets 
+   * up the physics model and visualization for simulation mode.
+   */
+  private void initSimulation() {
+    leaderSim = leaderMotor.getSimState();
+
+    // Match this to your InvertedValue. CounterClockwise_Positive is the default.
+    leaderSim.Orientation = ChassisReference.CounterClockwise_Positive;
+
+    double drumRadiusMeters = ElevatorConstants.kSpoolCircumferenceMeters / (2.0 * Math.PI);
+
+    elevatorSim = new ElevatorSim(
+      DCMotor.getKrakenX60(2),            // both motors drive the same spool
+      ElevatorConstants.kGearRatio,
+      ElevatorConstants.kCarriageMassKg,
+      drumRadiusMeters,
+      ElevatorConstants.kMinHeightMeters,
+      ElevatorConstants.kMaxHeightMeters,
+      true,                               // simulate gravity
+      ElevatorConstants.kMinHeightMeters  // starts at the bottom, like a real power-on
+    );
+
+    // Make the TalonFX agree with the physics model at startup
+    leaderSim.setRawRotorPosition(Conversions.metersToRotations(
+      ElevatorConstants.kMinHeightMeters,
+      ElevatorConstants.kGearRatio,
+      ElevatorConstants.kSpoolCircumferenceMeters
+    ));
   }
 
-  // ----------------------------------------------------------------------------------------
-  // Private configuration methods
-  // ----------------------------------------------------------------------------------------
+  /**
+   * Initialize tuning constants on the SmartDashboard for real-time tuning.
+   * This method is called once during subsystem initialization.
+   */
+  private void initTuningDashboard() {
+    if (TuningConstants.kTuneElevator) {
+      SmartDashboard.putNumber("Elevator/P", ElevatorConstants.kP);
+      SmartDashboard.putNumber("Elevator/I", ElevatorConstants.kI);
+      SmartDashboard.putNumber("Elevator/D", ElevatorConstants.kD);
+      SmartDashboard.putNumber("Elevator/kS", ElevatorConstants.kS);
+      SmartDashboard.putNumber("Elevator/kV", ElevatorConstants.kV);
+      SmartDashboard.putNumber("Elevator/kA", ElevatorConstants.kA);
+      SmartDashboard.putNumber("Elevator/kG", ElevatorConstants.kG);
+    }
+  }
 
   /**
-   * Configures both motors. The follower mirrors the leader in the opposite direction.
+   * Read tuning constants from SmartDashboard and apply them to the climber motor.
+   * This allows for real-time tuning of PIDF constants without redeploying code.
    */
-  private void configureMotors() {
-    // Motor output
-    leaderConfig.MotorOutput
+  private void getTuningFromDashboard() {
+    if (!TuningConstants.kTuneElevator) return;
+
+    // Get the current tuning values from the SmartDashboard
+    double[] current = {
+      SmartDashboard.getNumber("Elevator/P", ElevatorConstants.kP),
+      SmartDashboard.getNumber("Elevator/I", ElevatorConstants.kI),
+      SmartDashboard.getNumber("Elevator/D", ElevatorConstants.kD),
+      SmartDashboard.getNumber("Elevator/kS", ElevatorConstants.kS),
+      SmartDashboard.getNumber("Elevator/kV", ElevatorConstants.kV),
+      SmartDashboard.getNumber("Elevator/kA", ElevatorConstants.kA),
+      SmartDashboard.getNumber("Elevator/kG", ElevatorConstants.kG)
+    };
+    if (Arrays.equals(current, lastTuning)) return;
+
+    // Cache the current tuning values to avoid unnecessary updates
+    lastTuning = current;
+    
+    // Update the controller with the new constants
+    TalonFXConfiguration tuneConfig = new TalonFXConfiguration();
+    tuneConfig.Slot0
+      .withKP(current[0])
+      .withKI(current[1])
+      .withKD(current[2])
+      .withKS(current[3])
+      .withKV(current[4])
+      .withKA(current[5])
+      .withKG(current[6])
+      .withGravityType(GravityTypeValue.Elevator_Static);
+    
+    TalonFXFactory.applyConfig(leaderMotor, tuneConfig);
+    TalonFXFactory.applyConfig(followerMotor, tuneConfig);
+  }
+  
+  /**
+   * Configure the subsystem motors with the appropriate settings
+   */
+  private TalonFXConfiguration getMotorConfig() {
+    TalonFXConfiguration config = new TalonFXConfiguration();
+
+    // Set basic motor configuration parameters
+    config.MotorOutput
       .withNeutralMode(NeutralModeValue.Brake)
       .withInverted(InvertedValue.CounterClockwise_Positive)
       .withDutyCycleNeutralDeadband(0.001);
 
-    // Current limits
-    leaderConfig.CurrentLimits
+    // Set current limits
+    config.CurrentLimits
       .withSupplyCurrentLimitEnable(true)
-      .withSupplyCurrentLimit(60)
-      .withSupplyCurrentLowerLimit(40)
-      .withSupplyCurrentLowerTime(0.5)
+      .withSupplyCurrentLimit(40)
+      .withSupplyCurrentLowerLimit(30)
+      .withSupplyCurrentLowerTime(1.0)
       .withStatorCurrentLimitEnable(true)
-      .withStatorCurrentLimit(80);
+      .withStatorCurrentLimit(60);
 
-    // Voltage compensation
-    leaderConfig.Voltage
+    // Set voltage limits
+    config.Voltage
       .withPeakForwardVoltage(12)
       .withPeakReverseVoltage(-12)
       .withSupplyVoltageTimeConstant(0.02);
 
-    // Feedback - convert motor rotations to meters of elevator travel
-    // rotationsToMeters = sprocket circumference / gear ratio
-    leaderConfig.Feedback
-      .withSensorToMechanismRatio(ElevatorConstants.kGearRatio / ElevatorConstants.kSpoolCircumferenceMeters);
+    // Set PID and feedforward gains
+      config.Slot0
+        .withKP(ElevatorConstants.kP)
+        .withKI(ElevatorConstants.kI)
+        .withKD(ElevatorConstants.kD)
+        .withKS(ElevatorConstants.kS)
+        .withKV(ElevatorConstants.kV)
+        .withKA(ElevatorConstants.kA)
+        .withKG(ElevatorConstants.kG)
+        .withGravityType(GravityTypeValue.Elevator_Static);
 
-    // Soft limits to protect the elevator without limit switches
-    leaderConfig.SoftwareLimitSwitch
+    // Set motion control parameters
+    config.MotionMagic
+      .withMotionMagicCruiseVelocity(ElevatorConstants.kCruiseVelocity)
+      .withMotionMagicAcceleration(ElevatorConstants.kAcceleration)
+      .withMotionMagicJerk(ElevatorConstants.kJerk);
+
+    // Set soft limits for the elevator
+    config.SoftwareLimitSwitch
       .withForwardSoftLimitEnable(true)
-      .withForwardSoftLimitThreshold(ElevatorConstants.kMaxHeightMeters)
+      .withForwardSoftLimitThreshold(Conversions.metersToRotations(
+        ElevatorConstants.kMaxHeightMeters, 
+        ElevatorConstants.kGearRatio, 
+        ElevatorConstants.kSpoolCircumferenceMeters
+      ))
       .withReverseSoftLimitEnable(true)
-      .withReverseSoftLimitThreshold(ElevatorConstants.kMinHeightMeters);
+      .withReverseSoftLimitThreshold(Conversions.metersToRotations(
+        ElevatorConstants.kMinHeightMeters, 
+        ElevatorConstants.kGearRatio, 
+        ElevatorConstants.kSpoolCircumferenceMeters
+      ));
 
-    // Position PID with gravity compensation (slot 0)
-    leaderConfig.Slot0
-      .withKP(ElevatorConstants.kP)
-      .withKI(ElevatorConstants.kI)
-      .withKD(ElevatorConstants.kD)
-      .withKS(ElevatorConstants.kS)
-      .withKV(ElevatorConstants.kV)
-      .withKA(ElevatorConstants.kA)
-      .withKG(ElevatorConstants.kG)
-      .withGravityType(GravityTypeValue.Elevator_Static); // Constant gravity compensation
-
-    // MotionMagic configuration
-    leaderConfig.MotionMagic
-      .withMotionMagicCruiseVelocity(ElevatorConstants.kCruiseVelocityMPS)
-      .withMotionMagicAcceleration(ElevatorConstants.kAccelerationMPS2)
-      .withMotionMagicJerk(ElevatorConstants.kJerkMPS3);
-
-    // Apply configuration to leader
-    leaderMotor.getConfigurator().apply(leaderConfig);
-
-    // Optimize CAN status frames on leader
-    leaderMotor.getPosition().setUpdateFrequency(100.0);
-    leaderMotor.getVelocity().setUpdateFrequency(100.0);
-    leaderMotor.getMotorVoltage().setUpdateFrequency(50.0);
-    leaderMotor.getSupplyCurrent().setUpdateFrequency(50.0);
-    leaderMotor.getTorqueCurrent().setUpdateFrequency(50.0);
-    leaderMotor.getDeviceTemp().setUpdateFrequency(4.0);
-    leaderMotor.optimizeBusUtilization();
-
-    // Configure follower to mirror leader in opposite direction
-    // OpposeMasterDirection=true if the follower is mechanically mirrored
-    followerMotor.setControl(new Follower(CANConstants.kElevatorLeaderMotorID, MotorAlignmentValue.Aligned));
-
-    // Minimize follower CAN traffic since it mirrors the leader
-    followerMotor.getSupplyCurrent().setUpdateFrequency(50.0);
-    followerMotor.getDeviceTemp().setUpdateFrequency(4.0);
-    followerMotor.optimizeBusUtilization();
+    // Return the motor configuration
+    return config;
   }
 
   // ----------------------------------------------------------------------------------------
@@ -193,10 +313,50 @@ public class ElevatorSubsystem extends SubsystemBase {
   // ----------------------------------------------------------------------------------------
 
   /**
-   * Zeros the encoder. Elevator must be at home (bottom) position when called.
+   * Sets the elevator to a target height using MotionMagic
+   * @param heightMeters Target height in meters
    */
-  private void zeroEncoder() {
-    leaderMotor.setPosition(0);
+  private void setHeight(double heightMeters) {
+    // Clamp target to valid range
+    targetHeightMeters = MathUtil.clamp(
+      heightMeters,
+      ElevatorConstants.kMinHeightMeters,
+      ElevatorConstants.kMaxHeightMeters
+    );
+
+    // Convert target height to motor rotations
+    double targetMotorRotations = Conversions.metersToRotations(
+      targetHeightMeters, 
+      ElevatorConstants.kGearRatio, 
+      ElevatorConstants.kSpoolCircumferenceMeters
+    );
+
+    // Set the target position using MotionMagic
+    leaderMotor.setControl(motionMagicRequest.withPosition(targetMotorRotations));
+  }
+
+  /**
+   * Sets the elevator motor voltage directly (open-loop), with safety checks for limits.
+   * @param volts Voltage to apply to the motor
+   */
+  private void setVoltage(double volts) {
+    // Clamp voltage to safe range
+    volts = MathUtil.clamp(volts, -12, 12);
+
+    // Check if the elevator is at the upper limit and trying to move up
+    if (isAtHeight(ElevatorConstants.kMaxHeightMeters) && volts > 0) {
+      stop();
+      return;
+    }
+
+    // Check if the elevator is at the lower limit and trying to move down
+    if (isAtHeight(ElevatorConstants.kMinHeightMeters) && volts < 0) {
+      stop();
+      return;
+    }
+
+    // Set the voltage to the leader motor (follower will mirror)
+    leaderMotor.setControl(new VoltageOut(volts));
   }
 
   /**
@@ -204,38 +364,19 @@ public class ElevatorSubsystem extends SubsystemBase {
    * @return Current height in meters
    */
   private double getHeightMeters() {
-    return leaderMotor.getPosition().getValueAsDouble();
-  }
-
-  /**
-   * Gets the current elevator velocity in meters per second
-   * @return Current velocity in m/s
-   */
-  private double getVelocityMPS() {
-    return leaderMotor.getVelocity().getValueAsDouble();
-  }
-
-  /**
-   * Sets the elevator to a target height using MotionMagic
-   * @param heightMeters Target height in meters
-   */
-  private void setHeight(double heightMeters) {
-    // Clamp target to valid range
-    targetPositionMeters = MathUtil.clamp(
-      heightMeters,
-      ElevatorConstants.kMinHeightMeters,
-      ElevatorConstants.kMaxHeightMeters
+    return Conversions.rotationsToMeters(
+      leaderMotor.getPosition().getValueAsDouble(),
+      ElevatorConstants.kGearRatio,
+      ElevatorConstants.kSpoolCircumferenceMeters
     );
-
-    leaderMotor.setControl(motionMagicRequest.withPosition(targetPositionMeters));
   }
-
+  
   /**
-   * Drives the elevator at a raw voltage. Used for homing.
-   * @param volts Voltage to apply
+   * Reset the encoder position to zero.
+   * This should only be called when the elevator is physically in the "home" position.
    */
-  private void setVoltage(double volts) {
-    leaderMotor.setControl(voltageRequest.withOutput(volts));
+  private void resetEncoder() {
+    leaderMotor.setPosition(0);
   }
 
   /**
@@ -246,55 +387,50 @@ public class ElevatorSubsystem extends SubsystemBase {
   }
 
   /**
-   * Sets motors to brake or coast mode
-   * @param brake True for brake, false for coast
-   */
-  private void setMotorBrake(boolean brake) {
-    NeutralModeValue mode = brake ? NeutralModeValue.Brake : NeutralModeValue.Coast;
-    leaderMotor.setNeutralMode(mode);
-    followerMotor.setNeutralMode(mode);
-  }
-
-  /**
-   * Gets whether the elevator is at its target height within tolerance
+   * Checks if the elevator is at its target height within tolerance
    * @return True if at target
    */
-  private boolean isAtTarget() {
-    return Math.abs(targetPositionMeters - getHeightMeters()) < ElevatorConstants.kHeightToleranceMeters;
+  private boolean isAtHeight() {
+    return isAtHeight(targetHeightMeters);
   }
 
   /**
-   * Gets whether the elevator is at its minimum height (home position)
-   * @return True if at home
+   * Gets whether the elevator is at the specified target height within tolerance
+   * @param targetHeightMeters Target height in meters
+   * @return True if at target
    */
-  private boolean isAtHome() {
-    return getHeightMeters() <= ElevatorConstants.kMinHeightMeters + ElevatorConstants.kHeightToleranceMeters;
-  }
-
-  /**
-   * Gets whether the elevator is at its maximum height
-   * @return True if at max height
-   */
-  private boolean isAtMaxHeight() {
-    return getHeightMeters() >= ElevatorConstants.kMaxHeightMeters - ElevatorConstants.kHeightToleranceMeters;
-  }
-
-  /**
-   * Gets whether the elevator is currently homing
-   * @return True if homing
-   */
-  private boolean isHoming() {
-    return homing;
+  private boolean isAtHeight(double targetHeightMeters) {
+    return MathUtil.isNear(
+      targetHeightMeters,
+      getHeightMeters(),
+      ElevatorConstants.kHeightToleranceMeters
+    );
   }
 
   // ---------------------------------------------------------------------------------------
   // Public triggers that expose private state
   // ---------------------------------------------------------------------------------------
+  
+  public final Trigger isAtTargetTrigger = new Trigger(this::isAtHeight)
+    .debounce(0.1, Debouncer.DebounceType.kRising);
+  
+  public final Trigger isAtMinHeightTrigger = new Trigger(() -> isAtHeight(ElevatorConstants.kMinHeightMeters))
+    .debounce(0.1, Debouncer.DebounceType.kRising);
 
-  public final Trigger isAtTargetTrigger    = new Trigger(this::isAtTarget);
-  public final Trigger isAtHomeTrigger      = new Trigger(this::isAtHome);
-  public final Trigger isAtMaxHeightTrigger = new Trigger(this::isAtMaxHeight);
-  public final Trigger isHomingTrigger      = new Trigger(this::isHoming);
+  public final Trigger isAtMaxHeightTrigger = new Trigger(() -> isAtHeight(ElevatorConstants.kMaxHeightMeters))
+    .debounce(0.1, Debouncer.DebounceType.kRising);
+
+  public final Trigger isAtLevelOneHeightTrigger = new Trigger(() -> isAtHeight(ElevatorConstants.kHeightL1Meters))
+    .debounce(0.1, Debouncer.DebounceType.kRising);
+
+  public final Trigger isAtLevelTwoHeightTrigger = new Trigger(() -> isAtHeight(ElevatorConstants.kHeightL2Meters))
+    .debounce(0.1, Debouncer.DebounceType.kRising);
+
+  public final Trigger isAtLevelThreeHeightTrigger = new Trigger(() -> isAtHeight(ElevatorConstants.kHeightL3Meters))
+    .debounce(0.1, Debouncer.DebounceType.kRising);
+
+  public final Trigger isAtLevelFourHeightTrigger = new Trigger(() -> isAtHeight(ElevatorConstants.kHeightL4Meters))
+    .debounce(0.1, Debouncer.DebounceType.kRising);
 
   // ----------------------------------------------------------------------------------------
   // Public methods to run at different phases of the match
@@ -304,9 +440,6 @@ public class ElevatorSubsystem extends SubsystemBase {
    * Initializes the elevator at the start of the autonomous phase.
    */
   public void autonomousInit() {
-    setMotorBrake(true);
-    homing = false;
-    setHeight(ElevatorConstants.kMinHeightMeters);
     Utils.logInfo("Elevator subsystem initialized for autonomous");
   }
 
@@ -314,8 +447,6 @@ public class ElevatorSubsystem extends SubsystemBase {
    * Initializes the elevator at the start of the teleop phase.
    */
   public void teleopInit() {
-    setMotorBrake(true);
-    homing = false;
     Utils.logInfo("Elevator subsystem initialized for teleop");
   }
 
@@ -323,8 +454,6 @@ public class ElevatorSubsystem extends SubsystemBase {
    * Initializes the elevator for post match (disabled) state.
    */
   public void postMatch() {
-    setMotorBrake(false);
-    homing = false;
     Utils.logInfo("Elevator subsystem initialized for post match");
   }
 
@@ -349,56 +478,116 @@ public class ElevatorSubsystem extends SubsystemBase {
    * @param heightMeters Target height in meters
    * @return Command to move to the target height
    */
-  public Command moveToHeightCommand(double heightMeters) {
-    return runOnce(() -> setHeight(heightMeters))
-      .andThen(Commands.waitUntil(this::isAtTarget))
-      .withName("Elevator_MoveToHeight");
+  public Command setHeightCommand(double heightMeters) {
+    return run(() -> setHeight(heightMeters))
+      .until(this::isAtHeight)
+      .withTimeout(ElevatorConstants.kMoveTimeoutSeconds)
+      .withName("Elevator_SetHeight");
   }
 
   /**
-   * Command to move the elevator to its minimum (home) position and rezero the encoder.
-   * Since there are no limit switches, homing uses a slow downward voltage until
-   * the elevator stops moving, then zeros the encoder.
-   * @return Command to home the elevator
+   * Command to move the elevator to the bottom and wait until it arrives.
+   * @return Command to move to the bottom
    */
-  public Command homeCommand() {
-    return runOnce(() -> {
-      homing = true;
-      // Disable soft limits during homing so we can drive to the hard stop
-      leaderMotor.getConfigurator().apply(
-        leaderConfig.SoftwareLimitSwitch
-          .withForwardSoftLimitEnable(false)
-          .withReverseSoftLimitEnable(false)
-      );
-    })
-    // Drive slowly downward
-    .andThen(run(() -> setVoltage(ElevatorConstants.kHomingVoltage)))
-    // Wait until velocity is near zero (hit the hard stop)
-    .until(() -> Math.abs(getVelocityMPS()) < ElevatorConstants.kHomingVelocityThresholdMPS)
-    // Zero the encoder and re-enable soft limits
-    .andThen(runOnce(() -> {
-      stop();
-      zeroEncoder();
-      targetPositionMeters = 0.0;
-      homing = false;
-      // Re-enable soft limits after homing
-      leaderMotor.getConfigurator().apply(
-        leaderConfig.SoftwareLimitSwitch
-          .withForwardSoftLimitEnable(true)
-          .withForwardSoftLimitThreshold(ElevatorConstants.kMaxHeightMeters)
-          .withReverseSoftLimitEnable(true)
-          .withReverseSoftLimitThreshold(ElevatorConstants.kMinHeightMeters)
-      );
-    }))
-    .withName("Elevator_Home");
+  public Command toMinimumCommand() {
+    return setHeightCommand(ElevatorConstants.kMinHeightMeters)
+      .withName("Elevator_ToMinimum");
+  }
+
+  /**
+   * Command to move the elevator to the level one height in meters and wait until it arrives.
+   * @return Command to move to the level one height
+   */
+  public Command toLevelOneCommand() {
+    return setHeightCommand(ElevatorConstants.kHeightL1Meters)
+      .withName("Elevator_ToLevelOne");
+  }
+
+  /**
+   * Command to move the elevator to the level two height in meters and wait until it arrives.
+   * @return Command to move to the level two height
+   */
+  public Command toLevelTwoCommand() {
+    return setHeightCommand(ElevatorConstants.kHeightL2Meters)
+      .withName("Elevator_ToLevelTwo");
+  }
+
+  /**
+   * Command to move the elevator to the level three height in meters and wait until it arrives.
+   * @return Command to move to the level three height
+   */
+  public Command toLevelThreeCommand() {
+    return setHeightCommand(ElevatorConstants.kHeightL3Meters)
+      .withName("Elevator_ToLevelThree");
+  }
+
+  /**
+   * Command to move the elevator to the level four height in meters and wait until it arrives.
+   * @return Command to move to the level four height
+   */
+  public Command toLevelFourCommand() {
+    return setHeightCommand(ElevatorConstants.kHeightL4Meters)
+      .withName("Elevator_ToLevelFour");
+  }
+
+  /**
+   * Holds the elevator with the MotionMagic loop closed (kG + kP fight gravity)
+   * instead of dropping to neutral. On start it keeps the last target if the elevator is within
+   * tolerance of it; otherwise it adopts the current height (so it never snaps back to a stale
+   * target after manual control, SysId, a timeout, or a disable/enable). At the bottom it goes
+   * neutral so the carriage rests on the hard stop.
+   */
+  public Command holdPositionCommand() {
+    return startRun(
+      () -> { 
+        if (!isAtHeight(targetHeightMeters)) {
+          targetHeightMeters = getHeightMeters();
+        }
+      },
+      () -> {
+        if (targetHeightMeters <= ElevatorConstants.kMinHeightMeters + ElevatorConstants.kHeightToleranceMeters) {
+          stop();
+        } else {
+          setHeight(targetHeightMeters);
+        }
+      }
+    ).withName("Elevator_HoldPosition");
   }
 
   /**
    * Command to stop the elevator
    */
   public Command stopCommand() {
-    return runOnce(this::stop)
+    return run(this::stop)
       .withName("Elevator_Stop");
+  }
+
+  /**
+   * Command to move the elevator up (open-loop control)
+   * @return Command that moves the elevator up
+   */
+  public Command upCommand() {
+    return run(() -> setVoltage(ElevatorConstants.kManualUpVoltage))
+      .withName("Elevator_ManualUp");
+  }
+
+  /**
+   * Command to move the elevator down (open-loop control)
+   * @return Command that moves the elevator down
+   */
+  public Command downCommand() {
+    return run(() -> setVoltage(ElevatorConstants.kManualDownVoltage))
+      .withName("Elevator_ManualDown");
+  }
+  
+  /**
+   * Command to reset the encoder to zero at the current position
+   * @return Command that resets the encoder
+   */
+  public Command setHomePositionCommand() {
+    return runOnce(this::resetEncoder)
+      .ignoringDisable(true)
+      .withName("Elevator_SetHomePosition");
   }
 
   // ----------------------------------------------------------------------------------------
@@ -407,15 +596,9 @@ public class ElevatorSubsystem extends SubsystemBase {
 
   @Override
   public void initSendable(SendableBuilder builder) {
-    builder.addDoubleProperty("Target Height (m)",   () -> Utils.showDouble(targetPositionMeters), null);
+    super.initSendable(builder);
+    builder.addDoubleProperty("Target Height (m)",   () -> Utils.showDouble(targetHeightMeters), null);
     builder.addDoubleProperty("Current Height (m)",  () -> Utils.showDouble(getHeightMeters()), null);
-    builder.addDoubleProperty("Height Error (m)",    () -> Utils.showDouble(targetPositionMeters - getHeightMeters()), null);
-    builder.addDoubleProperty("Velocity (mps)",      () -> Utils.showDouble(getVelocityMPS()), null);
-    builder.addBooleanProperty("At Target",          this::isAtTarget, null);
-    builder.addBooleanProperty("At Home",            this::isAtHome, null);
-    builder.addBooleanProperty("At Max Height",      this::isAtMaxHeight, null);
-    builder.addBooleanProperty("Homing",             this::isHoming, null);
-    builder.addDoubleProperty("Leader Voltage (V)",  () -> Utils.showDouble(leaderMotor.getMotorVoltage().getValueAsDouble()), null);
     builder.addDoubleProperty("Leader Current (A)",  () -> Utils.showDouble(leaderMotor.getSupplyCurrent().getValueAsDouble()), null);
     builder.addDoubleProperty("Leader Temp (C)",     () -> Utils.showDouble(leaderMotor.getDeviceTemp().getValueAsDouble()), null);
     builder.addDoubleProperty("Follower Current (A)",() -> Utils.showDouble(followerMotor.getSupplyCurrent().getValueAsDouble()), null);

@@ -10,11 +10,13 @@ import java.util.Map;
 import java.util.Optional;
 
 import org.photonvision.EstimatedRobotPose;
+import org.photonvision.simulation.SimCameraProperties;
 import org.photonvision.targeting.PhotonPipelineResult;
 import org.photonvision.targeting.PhotonTrackedTarget;
 
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Transform3d;
 import edu.wpi.first.util.sendable.SendableBuilder;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
@@ -56,21 +58,16 @@ public class VisionSubsystem extends SubsystemBase {
       return;
     }
 
-    // Get the defined camera configurations
-    Map<String, Transform3d> configs = VisionConstants.kCameraConfigs;
+    // Get the defined AprilTag camera configurations
+    Map<String, Transform3d> configs = VisionConstants.kAprilTagCameras;
     
     // Add each to camera the list
     for (String cameraName : configs.keySet()) {
       try {
         cameras.add(new Camera(cameraName, configs.get(cameraName)));
-      } catch (Exception e) {
-        Utils.logError("Failed to initialize camera " + cameraName + ": " + e.getMessage());
+      } catch (Exception ex) {
+        Utils.logError("Failed to initialize camera " + cameraName + ": " + ex.getMessage());
       }
-    }
-    
-    // Warn if no cameras initialized
-    if (cameras.isEmpty()) {
-      Utils.logError("Vision enabled but no cameras initialized!");
     }
 
     // Initialize dashboard values
@@ -93,14 +90,17 @@ public class VisionSubsystem extends SubsystemBase {
     for (Camera camera : cameras) {
       try {
         camera.updateCache();
-      } catch (Exception e) {
-        Utils.logError("Error updating cache for " + camera.getName() + ": " + e.getMessage());
+      } catch (Exception ex) {
+        Utils.logError("Error updating cache for " + camera.getName() + ": " + ex.getMessage());
       }
     }
     
     // Process vision measurements using cached data
     updateVisionMeasurements();
   }
+
+  @Override
+  public void simulationPeriodic() {}
 
   // ==================== Internal State Modifiers ====================
 
@@ -138,41 +138,46 @@ public class VisionSubsystem extends SubsystemBase {
           }
           
           // Skip further processing if the pose estimate is not valid
-          if (!isValidPose(result, estimate))  {
+          if (!isValidPose(estimate))  {
             continue;
           }
           
           // Calculate standard deviations
-          double[] stdDevs = calculateStandardDeviations(result);
+          double[] stdDevs = calculateStandardDeviations(estimate);
 
           // Push vision measurement to drive subsystem via the vision consumer callback
           visionConsumer.accept(estimate.estimatedPose.toPose2d(), estimate.timestampSeconds, stdDevs);
         }
-      } catch (Exception e) {
-        Utils.logError("Error processing vision for " + camera.getName() + ": " + e.getMessage());
+      } catch (Exception ex) {
+        Utils.logError("Error processing vision for " + camera.getName() + ": " + ex.getMessage());
       }
     }
   }
 
   /**
    * Validates a pose estimate to reject obviously incorrect measurements
-   * @param result The photon camera pipeline result validate
    * @param estimate The estimated robot pose from the camera
    * @return True if the pose is valid
    */
-  private boolean isValidPose(PhotonPipelineResult result, EstimatedRobotPose estimate) {
+  private boolean isValidPose(EstimatedRobotPose estimate) {
     // Check for single tag estimates
-    if (result.getTargets().size() == 1) {
-      // Get the target
-      PhotonTrackedTarget target = result.getBestTarget();
+    if (estimate.targetsUsed.size() == 1) {
+      // Get the single target used for the estimate
+      PhotonTrackedTarget target = estimate.targetsUsed.get(0);
 
       // Ambiguity check
-      if (target == null || target.getPoseAmbiguity() > VisionConstants.kPoseAmbiguityThreshold) {
+      if (target.getPoseAmbiguity() > VisionConstants.kPoseAmbiguityThreshold) {
         return false;
       }
 
-      // Area check (tags too small = far away = unreliable)
-      if (target.getArea() < VisionConstants.kMinTagAreaPixels) {
+      // Area check (getArea() is percent of image; tags too small = far away = unreliable)
+      if (target.getArea() < VisionConstants.kMinTagAreaPercent) {
+        return false;
+      }
+
+      // Distance check (single-tag accuracy falls off quickly with range)
+      double distance = target.getBestCameraToTarget().getTranslation().getNorm();
+      if (distance > VisionConstants.kSingleTagMaxDistanceMeters) {
         return false;
       }
     }
@@ -197,13 +202,18 @@ public class VisionSubsystem extends SubsystemBase {
 
   /**
    * Calculate standard deviations based on target quality
-   * @param result The photon camera pipeline result to calculate standard deviations for
+   * @param estimate The estimated robot pose to calculate standard deviations for
    * @return Array of standard deviations for x, y, and theta
    */
-  private double[] calculateStandardDeviations(PhotonPipelineResult result) {
-    int numTargets = result.getTargets().size();
+  private double[] calculateStandardDeviations(EstimatedRobotPose estimate) {
+    // Get the list of targets used in the estimate
+    List<PhotonTrackedTarget> targetsUsed = estimate.targetsUsed;
 
-    double avgDistance = result.getTargets().stream()
+    // Get the number of targets used in the estimate
+    int numTargets = targetsUsed.size();
+
+    // Calculate average distance to targets, clamped to max distance
+    double avgDistance = targetsUsed.stream()
       .mapToDouble(t -> {
         var transform = t.getBestCameraToTarget();
         return transform != null
@@ -213,51 +223,75 @@ public class VisionSubsystem extends SubsystemBase {
       .average()
       .orElse(VisionConstants.kMaxDistanceMeters);
 
+    // Clamp average distance to max distance to avoid extreme std dev scaling
     avgDistance = Math.min(avgDistance, VisionConstants.kMaxDistanceMeters);
 
-    double avgAmbiguity = result.getTargets().stream()
+    // Calculate average ambiguity of all targets used
+    double avgAmbiguity = targetsUsed.stream()
       .mapToDouble(PhotonTrackedTarget::getPoseAmbiguity)
       .average()
       .orElse(0.0);
 
+    // ------------------------------------------------------------------------
+    // Calculate XY standard deviation
+    // ------------------------------------------------------------------------
+    // Determine base XY standard deviation based on number of targets
     double baseXY = (numTargets == 1)
       ? VisionConstants.kSingleTagBaseXYstdDev
       : VisionConstants.kMultiTagBaseXYstdDev;
 
-    double baseTheta = (numTargets == 1)
-      ? VisionConstants.kSingleTagBaseThetaStdDev
-      : VisionConstants.kMultiTagBaseThetaStdDev;
+    // XY: scale with distance, tag count, and ambiguity
+    double xyStdDev = baseXY * (1.0 + (avgDistance * avgDistance / 20.0)) / Math.sqrt(numTargets);
 
-    double xyStdDev = baseXY;
-    double thetaStdDev = baseTheta;
-
-    // Distance scaling (slightly softer)
-    xyStdDev *= (1.0 + (avgDistance * avgDistance / 20.0));
-    thetaStdDev *= (1.0 + (avgDistance * avgDistance / 40.0));
-
-    // Tag count scaling (less aggressive)
-    double tagFactor = 1.0 / Math.sqrt(numTargets);
-    xyStdDev *= tagFactor;
-    thetaStdDev *= tagFactor;
-
-    // Ambiguity scaling (earlier + smooth)
+    // Increase XY std dev if ambiguity is high
     if (avgAmbiguity > 0.05) {
-      double scale = 1.0 + (avgAmbiguity * 5.0);
-      xyStdDev *= scale;
-      thetaStdDev *= scale;
+      xyStdDev *= 1.0 + (avgAmbiguity * 5.0);
     }
 
-    // Single tag rotation penalty (stronger)
-    if (numTargets == 1) {
-      thetaStdDev *= 2.5;
-    }
-
-    // Clamp to safe bounds
+    // Clamp XY std dev to reasonable bounds to avoid extreme values
     xyStdDev = MathUtil.clamp(xyStdDev, 0.01, 1.5);
-    thetaStdDev = MathUtil.clamp(thetaStdDev, 0.01, Math.PI);
 
-    // Return the calculated standard deviations
-    return new double[] {xyStdDev, xyStdDev, thetaStdDev};
+    // ------------------------------------------------------------------------
+    // Calculate Theta standard deviation
+    // ------------------------------------------------------------------------
+    // ignore single-tag heading entirely, trust multi-tag only modestly
+    double thetaStdDev;
+
+    if (numTargets == 1) {
+      // Single-tag heading is ignored
+      thetaStdDev = VisionConstants.kIgnoredThetaStdDev;
+    } 
+    else {
+      // Multi-tag heading is more reliable, but still scales with distance and ambiguity
+      thetaStdDev = VisionConstants.kMultiTagBaseThetaStdDev
+        * (1.0 + (avgDistance * avgDistance / 40.0))
+        / Math.sqrt(numTargets);
+
+      // Increase theta std dev if ambiguity is high
+      if (avgAmbiguity > 0.05) {
+        thetaStdDev *= 1.0 + (avgAmbiguity * 5.0);
+      }
+
+      // Ensure theta std dev does not go below the minimum threshold
+      thetaStdDev = Math.max(thetaStdDev, VisionConstants.kMinThetaStdDev);
+    }
+
+    // Return the calculated standard deviations for x, y, and theta
+    return new double[] { xyStdDev, xyStdDev, thetaStdDev };
+  }
+
+  /**
+   * Creates simulated camera properties for PhotonVision simulation
+   * @return SimCameraProperties object with configured properties
+   */
+  private static SimCameraProperties createSimCameraProperties() {
+    var props = new SimCameraProperties();
+    props.setCalibration(640, 480, Rotation2d.fromDegrees(90));
+    props.setCalibError(0.25, 0.08);   // avg / std-dev pixel error
+    props.setFPS(20);
+    props.setAvgLatencyMs(35);
+    props.setLatencyStdDevMs(5);
+    return props;
   }
 
   // ==================== Public state accessors ====================
@@ -363,32 +397,35 @@ public class VisionSubsystem extends SubsystemBase {
    */
   @Override
   public void initSendable(SendableBuilder builder) {
+    super.initSendable(builder);
     builder.addBooleanProperty("Enabled", this::isEnabled, null);
     builder.addBooleanProperty("Has Targets", this::hasTargets, null);
     builder.addDoubleProperty("Total Targets", this::getTotalTargetCount, null);
     
     // Individual camera status - call getLatestResult() in the lambda
-    for (Camera camera : cameras) {
-      String prefix = "Camera/" + camera.getName() + "/";
-    
-      builder.addBooleanProperty(prefix + "Connected", () -> camera.getCamera().isConnected(), null);
-      builder.addBooleanProperty(prefix + "Has Targets", () -> camera.getLatestResult().hasTargets(), null);
-      builder.addDoubleProperty(prefix + "Target Count", () -> camera.getLatestResult().getTargets().size(), null);
-      builder.addDoubleProperty(prefix + "Unread Results", () -> camera.getCachedResults().size(), null);
+    if (VisionConstants.kDebug) {
+      for (Camera camera : cameras) {
+        String prefix = "Camera/" + camera.getName() + "/";
       
-      // For best target data, check if targets exist each time
-      builder.addDoubleProperty(prefix + "Best Target ID", () -> {
-        PhotonPipelineResult r = camera.getLatestResult();
-        return r.hasTargets() ? r.getBestTarget().getFiducialId() : -1;
-      }, null);
-      builder.addDoubleProperty(prefix + "Best Target Distance", () -> {
-        PhotonPipelineResult r = camera.getLatestResult();
-        return r.hasTargets() ? r.getBestTarget().getBestCameraToTarget().getTranslation().getNorm() : 0;
-      }, null);
-      builder.addDoubleProperty(prefix + "Best Target Ambiguity", () -> {
-        PhotonPipelineResult r = camera.getLatestResult();
-        return r.hasTargets() ? r.getBestTarget().getPoseAmbiguity() : 0;
-      }, null);
+        builder.addBooleanProperty(prefix + "Connected", () -> camera.getCamera().isConnected(), null);
+        builder.addBooleanProperty(prefix + "Has Targets", () -> camera.getLatestResult().hasTargets(), null);
+        builder.addDoubleProperty(prefix + "Target Count", () -> camera.getLatestResult().getTargets().size(), null);
+        builder.addDoubleProperty(prefix + "Unread Results", () -> camera.getCachedResults().size(), null);
+        
+        // For best target data, check if targets exist each time
+        builder.addDoubleProperty(prefix + "Best Target ID", () -> {
+          PhotonPipelineResult r = camera.getLatestResult();
+          return r.hasTargets() ? r.getBestTarget().getFiducialId() : -1;
+        }, null);
+        builder.addDoubleProperty(prefix + "Best Target Distance", () -> {
+          PhotonPipelineResult r = camera.getLatestResult();
+          return r.hasTargets() ? r.getBestTarget().getBestCameraToTarget().getTranslation().getNorm() : 0;
+        }, null);
+        builder.addDoubleProperty(prefix + "Best Target Ambiguity", () -> {
+          PhotonPipelineResult r = camera.getLatestResult();
+          return r.hasTargets() ? r.getBestTarget().getPoseAmbiguity() : 0;
+        }, null);
+      }
     }
   }
 }

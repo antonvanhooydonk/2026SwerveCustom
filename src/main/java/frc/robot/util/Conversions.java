@@ -20,115 +20,29 @@ public final class Conversions {
   private Conversions() {}
 
   // ============================================================
-  // Drive motor conversions
+  // Distance to rotation conversions
   // ============================================================
 
   /**
-   * Converts drive motor velocity (RPS) to wheel velocity (m/s)
-   * @param motorRPS Motor velocity in rotations per second
+   * Converts motor rotations to distance (meters)
+   * @param rotations Motor position in rotations
    * @param gearRatio Motor rotations per wheel rotation
-   * @param wheelCircumferenceMeters Wheel circumference in meters
-   * @return Wheel velocity in meters per second
-   */
-  public static double motorRPSToWheelMPS(double motorRPS, double gearRatio, double wheelCircumferenceMeters) {
-    return (motorRPS / gearRatio) * wheelCircumferenceMeters;
-  }
-
-  /**
-   * Converts wheel velocity (m/s) to drive motor velocity (RPS)
-   * @param wheelMPS Wheel velocity in meters per second
-   * @param gearRatio Motor rotations per wheel rotation
-   * @param wheelCircumferenceMeters Wheel circumference in meters
-   * @return Motor velocity in rotations per second
-   */
-  public static double wheelMPSToMotorRPS(double wheelMPS, double gearRatio, double wheelCircumferenceMeters) {
-    return (wheelMPS / wheelCircumferenceMeters) * gearRatio;
-  }
-
-  /**
-   * Converts drive motor position (rotations) to wheel distance (meters)
-   * @param motorRotations Motor position in rotations
-   * @param gearRatio Motor rotations per wheel rotation
-   * @param wheelCircumferenceMeters Wheel circumference in meters
+   * @param circumferenceMeters Circumference in meters
    * @return Wheel distance in meters
    */
-  public static double motorRotationsToWheelMeters(double motorRotations, double gearRatio, double wheelCircumferenceMeters) {
-    return (motorRotations / gearRatio) * wheelCircumferenceMeters;
+  public static double rotationsToMeters(double rotations, double gearRatio, double circumferenceMeters) {
+    return (rotations / gearRatio) * circumferenceMeters;
   }
 
   /**
-   * Converts wheel distance (meters) to drive motor position (rotations)
-   * @param wheelMeters Wheel distance in meters
+   * Converts distance (meters) to motor rotations
+   * @param meters Distance in meters
    * @param gearRatio Motor rotations per wheel rotation
-   * @param wheelCircumferenceMeters Wheel circumference in meters
+   * @param circumferenceMeters Circumference in meters
    * @return Motor position in rotations
    */
-  public static double wheelMetersToMotorRotations(double wheelMeters, double gearRatio, double wheelCircumferenceMeters) {
-    return (wheelMeters / wheelCircumferenceMeters) * gearRatio;
-  }
-
-  // ============================================================
-  // Steer motor conversions
-  // ============================================================
-
-  /**
-   * Converts steer motor position (rotations) to wheel angle (radians)
-   * @param motorRotations Motor position in rotations
-   * @param gearRatio Motor rotations per wheel rotation
-   * @return Wheel angle in radians
-   */
-  public static double motorRotationsToWheelRadians(double motorRotations, double gearRatio) {
-    return (motorRotations / gearRatio) * (2 * Math.PI);
-  }
-
-  /**
-   * Converts wheel angle (radians) to steer motor position (rotations)
-   * @param wheelRadians Wheel angle in radians
-   * @param gearRatio Motor rotations per wheel rotation
-   * @return Motor position in rotations
-   */
-  public static double wheelRadiansToMotorRotations(double wheelRadians, double gearRatio) {
-    return (wheelRadians / (2 * Math.PI)) * gearRatio;
-  }
-
-  /**
-   * Converts steer motor position (rotations) to wheel angle (degrees)
-   * @param motorRotations Motor position in rotations
-   * @param gearRatio Motor rotations per wheel rotation
-   * @return Wheel angle in degrees
-   */
-  public static double motorRotationsToWheelDegrees(double motorRotations, double gearRatio) {
-    return (motorRotations / gearRatio) * 360.0;
-  }
-
-  /**
-   * Converts wheel angle (degrees) to steer motor position (rotations)
-   * @param wheelDegrees Wheel angle in degrees
-   * @param gearRatio Motor rotations per wheel rotation
-   * @return Motor position in rotations
-   */
-  public static double wheelDegreesToMotorRotations(double wheelDegrees, double gearRatio) {
-    return (wheelDegrees / 360.0) * gearRatio;
-  }
-
-  /**
-   * Converts steer motor velocity (RPS) to wheel angular velocity (radians per second)
-   * @param motorRPS Motor velocity in rotations per second
-   * @param gearRatio Motor rotations per wheel rotation
-   * @return Wheel angular velocity in radians per second
-   */
-  public static double motorRPSToWheelRadiansPerSecond(double motorRPS, double gearRatio) {
-    return (motorRPS / gearRatio) * (2 * Math.PI);
-  }
-
-  /**
-   * Converts wheel angular velocity (radians per second) to steer motor velocity (RPS)
-   * @param wheelRadiansPerSecond Wheel angular velocity in radians per second
-   * @param gearRatio Motor rotations per wheel rotation
-   * @return Motor velocity in rotations per second
-   */
-  public static double wheelRadiansPerSecondToMotorRPS(double wheelRadiansPerSecond, double gearRatio) {
-    return (wheelRadiansPerSecond / (2 * Math.PI)) * gearRatio;
+  public static double metersToRotations(double meters, double gearRatio, double circumferenceMeters) {
+    return (meters / circumferenceMeters) * gearRatio;
   }
 
   // ============================================================
@@ -136,7 +50,7 @@ public final class Conversions {
   // ============================================================
 
   /**
-   * Converts rotations to radians, accounting for gear ratio
+   * Converts motor rotations to radians, accounting for gear ratio
    * @param rotations Motor position in rotations
    * @param gearRatio Motor rotations per output rotation
    * @return Angle in radians
@@ -146,7 +60,7 @@ public final class Conversions {
   }
 
   /**
-   * Converts radians to rotations, accounting for gear ratio
+   * Converts radians to motor rotations, accounting for gear ratio
    * @param radians Angle in radians
    * @param gearRatio Motor rotations per output rotation
    * @return Motor position in rotations
@@ -156,7 +70,7 @@ public final class Conversions {
   }
 
   /**
-   * Converts rotations to degrees, accounting for gear ratio
+   * Converts motor rotations to degrees, accounting for gear ratio
    * @param rotations Motor position in rotations
    * @param gearRatio Motor rotations per wheel rotation
    * @return Angle in degrees
@@ -166,7 +80,7 @@ public final class Conversions {
   }
 
   /**
-   * Converts degrees to rotations, accounting for gear ratio
+   * Converts degrees to motor rotations, accounting for gear ratio
    * @param degrees Angle in degrees
    * @param gearRatio Motor rotations per wheel rotation
    * @return Motor position in rotations

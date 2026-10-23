@@ -4,10 +4,15 @@
 
 package frc.robot.subsystems.climber;
 
-import com.revrobotics.PersistMode;
+import static edu.wpi.first.units.Units.Rotations;
+import static edu.wpi.first.units.Units.RotationsPerSecond;
+import static edu.wpi.first.units.Units.Volts;
+
+import java.util.Arrays;
+
 import com.revrobotics.RelativeEncoder;
-import com.revrobotics.ResetMode;
-import com.revrobotics.spark.SparkLowLevel.MotorType;
+import com.revrobotics.spark.SparkBase.ControlType;
+import com.revrobotics.spark.SparkClosedLoopController;
 import com.revrobotics.spark.SparkMax;
 import com.revrobotics.spark.config.SparkBaseConfig.IdleMode;
 import com.revrobotics.spark.config.SparkMaxConfig;
@@ -19,98 +24,244 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import edu.wpi.first.wpilibj2.command.button.Trigger;
+import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 
 import frc.robot.Constants.CANConstants;
+import frc.robot.Constants.TuningConstants;
+import frc.robot.util.Conversions;
+import frc.robot.util.SparkMaxFactory;
 import frc.robot.util.Utils;
 
 public class ClimberSubsystem extends SubsystemBase {
   // Hardware
   private final SparkMax climberMotor;
   private final RelativeEncoder climberEncoder;
-  
+  private final SparkClosedLoopController climberController;
+
+  // Cached target (for telemetry)
+  private double targetAngleDegrees = 0.0;
+
+  // SysId routine
+  private final SysIdRoutine sysIdRoutine;
+
+  // Tuning constants from the SmartDashboard (for real-time tuning)
+  private double[] lastTuning = new double[0];
+ 
   /** Creates a new ClimberSubsystem. */
-  public ClimberSubsystem() {
-    // Initialize hardware (we're using a brushed CIM for the climber)
-    climberMotor = new SparkMax(CANConstants.kClimberMotorID, MotorType.kBrushed);
-    
-    // Configure motor
-    configureMotor();
+  public ClimberSubsystem() {    
+    // Initialize the climber motor (we're using a brushed CIM for the climber)
+    climberMotor = SparkMaxFactory.createBrushedMotor(CANConstants.kClimberMotorID, getMotorConfig());
+
+    // Initialize closed-loop controller
+    climberController = climberMotor.getClosedLoopController();
     
     // Initialize encoder
     climberEncoder = climberMotor.getEncoder();
 
-    // Reset the encoder (assumes climber starts at the home position)
-    resetEncoder();
+    // NOTE: Do NOT zero the encoder here, so a code restart doesn't shift the soft limits.
+    // Use setHomePositionCommand() (disabled-only) with the climber straight up.
+    // Bench-verify that the Spark encoder position survives a code restart.
+    Utils.logInfo("Climber startup angle (deg): " + Utils.showDouble(getAngleDegrees()));
+
+    // Initialize SysId routine (leader motor only)
+    sysIdRoutine = new SysIdRoutine(
+      new SysIdRoutine.Config(null, null, null, null),
+      new SysIdRoutine.Mechanism(
+        volts -> climberMotor.setVoltage(volts),
+        log -> log.motor("climber")
+          .voltage(Volts.of(climberMotor.getAppliedOutput() * climberMotor.getBusVoltage()))
+          .angularPosition(Rotations.of(climberEncoder.getPosition()))
+          .angularVelocity(RotationsPerSecond.of(climberEncoder.getVelocity() / 60.0)),
+        this
+      )
+    );
     
     // set the default command for this subsystem
-    setDefaultCommand(stopCommand());
+    setDefaultCommand(holdAngleCommand());
 
     // Initialize dashboard
     SmartDashboard.putData("Climber", this);
+
+    // Initialize tuning constants on the SmartDashboard for real-time tuning
+    initTuningDashboard();
     
     // Output initialization progress
     Utils.logInfo("Climber subsystem initialized");
   }
-  
-  /**
-   * Configure the climber motor with all settings
-   */
-  private void configureMotor() {
-    SparkMaxConfig climbConfig = new SparkMaxConfig();
-
-    // configure the climber motor
-    climbConfig
-      .smartCurrentLimit(30) // amps
-      .voltageCompensation(12) // Consistent behavior across battery voltage
-      .idleMode(IdleMode.kBrake); // CRITICAL: Brake mode prevents falling
-      
-    climbConfig.encoder
-      .countsPerRevolution(ClimberConstants.kEncoderTicksPerRevolution) 
-      .positionConversionFactor(ClimberConstants.kPositionConversionFactor)
-      .velocityConversionFactor(ClimberConstants.kVelocityConversionFactor);
-
-    // Optimize CAN status frames for reduced lag
-    climbConfig.signals
-      .primaryEncoderPositionPeriodMs(20)    // Fast position data
-      .primaryEncoderVelocityPeriodMs(20)    // Fast velocity data
-      .externalOrAltEncoderPosition(500)     // Not used
-      .externalOrAltEncoderVelocity(500)     // Not used
-      .appliedOutputPeriodMs(500)            // Not needed for open-loop control
-      .faultsPeriodMs(200)                   // Keep at 200ms for fault detection
-      .analogVoltagePeriodMs(500);           // Not used
-
-    // apply configuration
-    climberMotor.configure(
-      climbConfig, 
-      ResetMode.kResetSafeParameters, 
-      PersistMode.kPersistParameters
-    );
-  }
 
   @Override
-  public void periodic() {}
+  public void periodic() {
+    getTuningFromDashboard();
+  }
+
+  /**
+   * Initialize tuning constants on the SmartDashboard for real-time tuning.
+   * This method is called once during subsystem initialization.
+   */
+  private void initTuningDashboard() {
+    if (TuningConstants.kTuneClimber) {
+      SmartDashboard.putNumber("Climber/P", ClimberConstants.kP);
+      SmartDashboard.putNumber("Climber/I", ClimberConstants.kI);
+      SmartDashboard.putNumber("Climber/D", ClimberConstants.kD);
+      SmartDashboard.putNumber("Climber/kS", ClimberConstants.kS);
+      SmartDashboard.putNumber("Climber/kV", ClimberConstants.kV);
+      SmartDashboard.putNumber("Climber/kA", ClimberConstants.kA);
+    }
+  }
+
+  /**
+   * Read tuning constants from SmartDashboard and apply them to the climber motor.
+   * This allows for real-time tuning of PIDF constants without redeploying code.
+   */
+  private void getTuningFromDashboard() {
+    if (!TuningConstants.kTuneClimber) return;
+
+    // Get the current tuning values from the SmartDashboard
+    double[] current = {
+      SmartDashboard.getNumber("Climber/P", ClimberConstants.kP),
+      SmartDashboard.getNumber("Climber/I", ClimberConstants.kI),
+      SmartDashboard.getNumber("Climber/D", ClimberConstants.kD),
+      SmartDashboard.getNumber("Climber/kS", ClimberConstants.kS),
+      SmartDashboard.getNumber("Climber/kV", ClimberConstants.kV),
+      SmartDashboard.getNumber("Climber/kA", ClimberConstants.kA),
+    };
+    if (Arrays.equals(current, lastTuning)) return;
+
+    // Cache the current tuning values to avoid unnecessary updates
+    lastTuning = current;
+
+    // Update the controller with the new constants
+    SparkMaxConfig tuneConfig = new SparkMaxConfig();
+    tuneConfig.closedLoop
+      .p(current[0])
+      .i(current[1])
+      .d(current[2])
+      .feedForward
+        .kS(current[3])
+        .kV(current[4])
+        .kA(current[5]);
     
-  // ==================== Internal State Modifiers ====================
+    SparkMaxFactory.patchConfig(climberMotor, tuneConfig);
+  }
   
   /**
-   * Set climber motor power with safety limits
-   * @param power Power to apply (-1.0 to 1.0)
+   * Configure the subsystem motors with the appropriate settings
    */
-  private void setPower(double power) {
-    double clampedPower = MathUtil.clamp(power, -1, 1);
+  private SparkMaxConfig getMotorConfig() {
+    SparkMaxConfig config = new SparkMaxConfig();
+    
+    // Set basic motor parameters
+    config
+      .smartCurrentLimit(10, 30) 
+      .voltageCompensation(12) 
+      .idleMode(IdleMode.kBrake)
+      .inverted(false);
 
-    // Safety: Stop at limits to prevent damage
-    if (isAtUpperLimit() && clampedPower > 0) {
-      stop();
-      return;
-    }    
-    if (isAtLowerLimit() && clampedPower < 0) {
+    // Set encoder parameters
+    config.encoder
+      .countsPerRevolution(ClimberConstants.kEncoderTicksPerRevolution);
+
+    // Set PID gains for closed-loop control
+    config.closedLoop
+      .p(ClimberConstants.kP)
+      .i(ClimberConstants.kI)
+      .d(ClimberConstants.kD)
+      .feedForward
+        .kS(ClimberConstants.kS)
+        .kV(ClimberConstants.kV)
+        .kA(ClimberConstants.kA);
+
+    // Set motion control parameters for closed-loop control
+    config.closedLoop.maxMotion
+      .cruiseVelocity(Conversions.degreesToRotations(
+        ClimberConstants.kMaxVelocityDegPerSec, 
+        ClimberConstants.kGearRatio
+      ) * 60)
+      .maxAcceleration(Conversions.degreesToRotations(
+        ClimberConstants.kMaxAccelDegPerSec2, 
+        ClimberConstants.kGearRatio
+      ) * 60)
+      .allowedProfileError(Conversions.degreesToRotations(
+        ClimberConstants.kAngleToleranceDegrees, 
+        ClimberConstants.kGearRatio
+      ));
+
+    // Set soft limits to prevent over-rotation
+    config.softLimit
+      .forwardSoftLimitEnabled(true)
+      .forwardSoftLimit(Conversions.degreesToRotations(
+        ClimberConstants.kMaxAngleDegrees, 
+        ClimberConstants.kGearRatio
+      ))
+      .reverseSoftLimitEnabled(true)
+      .reverseSoftLimit(Conversions.degreesToRotations(
+        ClimberConstants.kMinAngleDegrees, 
+        ClimberConstants.kGearRatio
+      ));
+
+    // Return the configured SparkMaxConfig
+    return config;
+  }
+
+  // ----------------------------------------------------------------------------------------
+  // Private state methods
+  // ----------------------------------------------------------------------------------------
+  
+  /**
+   * Set the target angle for the climber with safety limits
+   * @param angleDegrees Target angle in degrees
+   */
+  private void setAngle(double angleDegrees) {
+    // Clamp target to valid range
+    targetAngleDegrees = MathUtil.clamp(
+      Utils.normalizeAngleDegrees(angleDegrees), 
+      ClimberConstants.kMinAngleDegrees, 
+      ClimberConstants.kMaxAngleDegrees
+    );
+
+    // Convert target angle to motor rotations
+    double targetMotorRotations = Conversions.degreesToRotations(
+      targetAngleDegrees, 
+      ClimberConstants.kGearRatio
+    );
+
+    // Set the target position using max motion control
+    climberController.setSetpoint(targetMotorRotations, ControlType.kMAXMotionPositionControl);
+  }
+
+  /**
+   * Set the voltage for the climber motor (open-loop control)
+   * @param volts Voltage to apply to the motor (positive = toward larger encoder values)
+   */
+  private void setVoltage(double volts) {
+    // Clamp voltage to safe range
+    volts = MathUtil.clamp(volts, -12, 12);
+
+    // Check if the climber is at the upper limit and trying to move up
+    if (isAtAngle(ClimberConstants.kMinAngleDegrees) && volts < 0) {
       stop();
       return;
     }
+
+    // Check if the climber is at the lower limit and trying to move down
+    if (isAtAngle(ClimberConstants.kMaxAngleDegrees) && volts > 0) {
+      stop();
+      return;
+    }
+
+    // Apply voltage to the motor
+    climberMotor.setVoltage(volts);
+  }
     
-    // If within limits, set the motor power
-    climberMotor.set(clampedPower);
+  /**
+   * Get the current angle of the climber
+   * @return Angle in degrees
+   */
+  private double getAngleDegrees() {
+    return Utils.normalizeAngleDegrees(Conversions.rotationsToDegrees(
+      climberEncoder.getPosition(), 
+      ClimberConstants.kGearRatio
+    ));
   }
   
   /**
@@ -127,90 +278,25 @@ public class ClimberSubsystem extends SubsystemBase {
   private void stop() {
     climberMotor.stopMotor();
   }
-  
-  // ==================== State Methods ====================
-  
+
   /**
-   * Get the current position of the climber
-   * @return Position in degrees
+   * Check if climber is at its target angle within tolerance
+   * @return true if within tolerance of the target angle  
    */
-  private double getPosition() {
-    return climberEncoder.getPosition();
-  }
-  
-  /**
-   * Get the current speed of the climber
-   * @return Speed in degrees per second
-   */
-  private double getSpeed() {
-    return climberEncoder.getVelocity();
+  private boolean isAtAngle() {
+    return isAtAngle(targetAngleDegrees);
   }
 
   /**
-   * Get the current draw of the climber motor
-   * @return Current in amps
+   * Check if climber is at the specified target position within tolerance
+   * @param targetDegrees The target position in degrees to check against
+   * @return true if within tolerance of the target position  
    */
-  private double getCurrent() {
-    return climberMotor.getOutputCurrent();
-  }
-  
-  /**
-   * Get the temperature of the climber motor
-   * @return Temperature in Celsius
-   */
-  private double getTemperature() {
-    return climberMotor.getMotorTemperature();
-  }
-  
-  /**
-   * Check if climber is at or above upper position limit
-   * @return true if at or past upper limit
-   */
-  private boolean isAtUpperLimit() {
-    return getPosition() <= ClimberConstants.kUpperLimitDegrees;
-  }
-  
-  /**
-   * Check if climber is at or below lower position limit
-   * @return true if at or past lower limit
-   */
-  private boolean isAtLowerLimit() {
-    return getPosition() >= ClimberConstants.kLowerLimitDegrees;
-  }
-  
-  /**
-   * Check if climber is at home position
-   * @return true if within tolerance of home position
-   */
-  private boolean isAtHomePosition() {
+  private boolean isAtAngle(double targetDegrees) {
     return MathUtil.isNear(
-      ClimberConstants.kHomeDegrees,
-      getPosition(),
-      ClimberConstants.kPositionToleranceDegrees
-    );
-  }
-  
-  /**
-   * Check if climber is at level 1 climb position
-   * @return true if within tolerance of level 1 climb position
-   */
-  private boolean isAtLevelOneClimbPosition() {
-    return MathUtil.isNear(
-      ClimberConstants.kLevelOneClimbDegrees,
-      getPosition(),
-      ClimberConstants.kPositionToleranceDegrees
-    );
-  }
-  
-  /**
-   * Check if climber is at level 2 climb position
-   * @return true if within tolerance of level 2 climb position
-   */
-  private boolean isAtLevelTwoClimbPosition() {
-    return MathUtil.isNear(
-      ClimberConstants.kLevelTwoClimbDegrees,
-      getPosition(),
-      ClimberConstants.kPositionToleranceDegrees
+      Utils.normalizeAngleDegrees(targetDegrees),
+      getAngleDegrees(),
+      ClimberConstants.kAngleToleranceDegrees
     );
   }
   
@@ -220,54 +306,148 @@ public class ClimberSubsystem extends SubsystemBase {
    * @return true if motor appears stalled
    */
   private boolean isStalled() {
-    return Math.abs(getCurrent()) > ClimberConstants.kStallCurrentThreshold &&
-           Math.abs(climberEncoder.getVelocity()) < ClimberConstants.kStallVelocityThreshold;
+    return Math.abs(climberMotor.getOutputCurrent()) > ClimberConstants.kStallCurrentThreshold &&
+           Math.abs(climberEncoder.getVelocity()) < ClimberConstants.kStallVelocityThresholdRPM;
   }
 
-  /**
-   * Initialize the climber for autonomous mode. This resets the encoder zero position.
-   * This should be called at the start of autonomous to ensure the drive is in a known state.
-   * The climber should be physically positioned at the home position before this is called, 
-   * as it does not have limit switches and relies on the encoder zero for accurate positioning.
-   */
-  public void autonomousInit() {
-    resetEncoder();
-  }
-
-  // ==================== State Triggers ====================
-
-  /**
-   * Fires when climber reaches upper limit
-   */
-  public final Trigger isAtUpperLimitTrigger = new Trigger(this::isAtUpperLimit)
+  // ---------------------------------------------------------------------------------------
+  // Public triggers that expose private state
+  // ---------------------------------------------------------------------------------------
+  
+  public final Trigger isAtTargetTrigger = new Trigger(this::isAtAngle)
     .debounce(0.1, Debouncer.DebounceType.kRising);
 
-  /**
-   * Fires when climber reaches lower limit
-   */
-  public final Trigger isAtLowerLimitTrigger = new Trigger(this::isAtLowerLimit)
+  public final Trigger isAtHomeTrigger = new Trigger(() -> isAtAngle(ClimberConstants.kHomeDegrees))
     .debounce(0.1, Debouncer.DebounceType.kRising);
-  
-  /**
-   * Fires when climber is at level 1 climb position
-   */
-  public final Trigger isAtLevelOneClimbPositionTrigger = new Trigger(this::isAtLevelOneClimbPosition)
+
+  public final Trigger isAtUpperLimitTrigger = new Trigger(() -> isAtAngle(ClimberConstants.kMinAngleDegrees))
     .debounce(0.1, Debouncer.DebounceType.kRising);
-  
-  /**
-   * Fires when climber is at level 2 climb position
-   */
-  public final Trigger isAtLevelTwoClimbPositionTrigger = new Trigger(this::isAtLevelTwoClimbPosition)
+
+  public final Trigger isAtLowerLimitTrigger = new Trigger(() -> isAtAngle(ClimberConstants.kMaxAngleDegrees))
     .debounce(0.1, Debouncer.DebounceType.kRising);
-  
-  /**
-   * Fires when climber is stalled
-   */
+
+  public final Trigger isAtLevelOneClimbPositionTrigger = new Trigger(() -> isAtAngle(ClimberConstants.kLevelOneClimbDegrees))
+    .debounce(0.1, Debouncer.DebounceType.kRising);
+
+  public final Trigger isAtLevelTwoClimbPositionTrigger = new Trigger(() -> isAtAngle(ClimberConstants.kLevelTwoClimbDegrees))
+    .debounce(0.1, Debouncer.DebounceType.kRising);
+
   public final Trigger isStalledTrigger = new Trigger(this::isStalled)
     .debounce(0.1, Debouncer.DebounceType.kRising);
+
+  // ----------------------------------------------------------------------------------------
+  // Public methods to run at different phases of the match
+  // ----------------------------------------------------------------------------------------
+
+  /**
+   * Initializes the climber at the start of the autonomous phase.
+   */
+  public void autonomousInit() {
+    Utils.logInfo("Climber subsystem initialized for autonomous");
+  }
+
+  /**
+   * Initializes the climber at the start of the teleop phase.
+   */
+  public void teleopInit() {
+    Utils.logInfo("Climber subsystem initialized for teleop");
+  }
+
+  /**
+   * Initializes the climber for post match (disabled) state.
+   */
+  public void postMatch() {
+    Utils.logInfo("Climber subsystem initialized for post match");
+  }
+
+  // ----------------------------------------------------------------------------------------
+  // SysId Command Factories
+  // ----------------------------------------------------------------------------------------
+
+  public Command sysIdQuasistatic(SysIdRoutine.Direction direction) {
+    return sysIdRoutine.quasistatic(direction);
+  }
+
+  public Command sysIdDynamic(SysIdRoutine.Direction direction) {
+    return sysIdRoutine.dynamic(direction);
+  }
+
+  // ----------------------------------------------------------------------------------------
+  // Public Command Factory Methods
+  // ----------------------------------------------------------------------------------------
+
+  /**
+   * Command to move the climber to a specific position
+   * @param targetDegrees Target position in degrees
+   * @return Command that moves the climber to the target position
+   */
+  public Command setAngleCommand(double targetDegrees) {
+    return run(() -> setAngle(targetDegrees))
+      .until(this::isAtAngle)
+      .withTimeout(ClimberConstants.kMoveTimeoutSeconds)
+      .withName("Climber_SetAngle");
+  }
+
+  /**
+   * Command to move the climber to the home position
+   * @return Command that moves the climber to the home position
+   */
+  public Command toHomeCommand() {
+    return setAngleCommand(ClimberConstants.kHomeDegrees)
+      .withName("Climber_ToHome");
+  }
+
+  /**
+   * Command to move the climber to the level one position
+   * @return Command that moves the climber to the level one position
+   */
+  public Command toLevelOneCommand() {
+    return setAngleCommand(ClimberConstants.kLevelOneClimbDegrees)
+      .withName("Climber_ToLevelOne");
+  }
+
+  /**
+   * Command to move the climber to the level two position
+   * @return Command that moves the climber to the level two position
+   */
+  public Command toLevelTwoCommand() {
+    return setAngleCommand(ClimberConstants.kLevelTwoClimbDegrees)
+      .withName("Climber_ToLevelTwo");
+  }
   
-  // ==================== Command Factories ====================  
+  /**
+   * Command the climber to the upper limit
+   * @return Command that rotates to upper limit then stops
+   */
+  public Command toUpperLimitCommand() {
+    return setAngleCommand(ClimberConstants.kMinAngleDegrees)
+      .withName("Climber_ToUpperLimit");
+  }
   
+  /**
+   * Command the climber to the lower limit
+   * @return Command that rotates to lower limit then stops
+   */
+  public Command toLowerLimitCommand() {
+    return setAngleCommand(ClimberConstants.kMaxAngleDegrees)
+      .withName("Climber_ToLowerLimit");
+  }
+
+  /**
+   * Holds the climber with the Max Motion closed loop controller at the current position
+   * @return Command that holds the climber at the current position
+   */
+  public Command holdAngleCommand() {
+    return startRun(
+      () -> {
+        if (!isAtAngle(targetAngleDegrees)) {
+          targetAngleDegrees = getAngleDegrees();
+        }
+      },
+      () -> setAngle(targetAngleDegrees)
+    ).withName("Climber_HoldAngle");
+  }
+
   /**
    * Command to stop the climber
    * @return Command that stops the climber motor
@@ -278,94 +458,21 @@ public class ClimberSubsystem extends SubsystemBase {
   }
 
   /**
-   * Command to extend the climber upward
-   * @return Command that runs climber up at configured speed
+   * Command to move the climber up (open-loop control)
+   * @return Command that moves the climber up
    */
   public Command upCommand() {
-    return run(() -> setPower(ClimberConstants.kUpPercent))
-      .withName("Climber_Up");
+    return run(() -> setVoltage(ClimberConstants.kManualUpVoltage))
+      .withName("Climber_ManualUp");
   }
-  
+
   /**
-   * Command to retract the climber downward
-   * @return Command that runs climber down at configured speed
+   * Command to move the climber down (open-loop control)
+   * @return Command that moves the climber down
    */
   public Command downCommand() {
-    return run(() -> setPower(ClimberConstants.kDownPercent))
-      .withName("Climber_Down");
-  }
-  
-  /**
-   * Command the climber up until upper limit
-   * @return Command that rotates to upper limit then stops
-   */
-  public Command upToLimitCommand() {
-    return run(() -> setPower(ClimberConstants.kUpPercent))
-      .until(this::isAtUpperLimit)
-      .finallyDo(this::stop)
-      .withName("Climber_UpToLimit");
-  }
-  
-  /**
-   * Command the climber down until lower limit
-   * @return Command that rotates to lower limit then stops
-   */
-  public Command downToLimitCommand() {
-    return run(() -> setPower(ClimberConstants.kDownPercent))
-      .until(this::isAtLowerLimit)
-      .finallyDo(this::stop)
-      .withName("Climber_DownToLimit");
-  }
-  
-  /**
-   * Command the climber to move to the upright home position
-   * @return Command that moves to the home position then stops
-   */
-  public Command homeCommand() {
-    return run(() -> {
-      if (getPosition() < ClimberConstants.kHomeDegrees) {
-        setPower(ClimberConstants.kDownPercent);
-      } else {
-        setPower(ClimberConstants.kUpPercent);
-      }
-    })
-    .until(this::isAtHomePosition)
-    .finallyDo(this::stop)
-    .withName("Climber_Home");
-  }
-  
-  /**
-   * Command the climber to move to the level one climb position
-   * @return Command that moves to the level one climb position then stops
-   */
-  public Command levelOneClimbCommand() {
-    return run(() -> {
-      if (getPosition() < ClimberConstants.kLevelOneClimbDegrees) {
-        setPower(ClimberConstants.kDownPercent);
-      } else {
-        setPower(ClimberConstants.kUpPercent);
-      }
-    })
-    .until(this::isAtLevelOneClimbPosition)
-    .finallyDo(this::stop)
-    .withName("Climber_LevelOneClimb");
-  }
-  
-  /**
-   * Command the climber to move to the level two climb position
-   * @return Command that moves to the level two climb position then stops
-   */
-  public Command levelTwoClimbCommand() {
-    return run(() -> {
-      if (getPosition() < ClimberConstants.kLevelTwoClimbDegrees) {
-        setPower(ClimberConstants.kDownPercent);
-      } else {
-        setPower(ClimberConstants.kUpPercent);
-      }
-    })
-    .until(this::isAtLevelTwoClimbPosition)
-    .finallyDo(this::stop)
-    .withName("Climber_LevelTwoClimb");
+    return run(() -> setVoltage(ClimberConstants.kManualDownVoltage))
+      .withName("Climber_ManualDown");
   }
   
   /**
@@ -385,14 +492,10 @@ public class ClimberSubsystem extends SubsystemBase {
    */
   @Override
   public void initSendable(SendableBuilder builder) {
-    builder.setSmartDashboardType("ClimberSubsystem");
-    builder.addDoubleProperty("Position (deg)", () -> Utils.showDouble(getPosition()), null);
-    builder.addDoubleProperty("Velocity (deg per sec)", () -> Utils.showDouble(getSpeed()), null);
-    builder.addDoubleProperty("Current (A)", () -> Utils.showDouble(getCurrent()), null);
-    builder.addDoubleProperty("Temperature (C)", () -> Utils.showDouble(getTemperature()), null);
-    builder.addBooleanProperty("At Upper Limit", this::isAtUpperLimit, null);
-    builder.addBooleanProperty("At Lower Limit", this::isAtLowerLimit, null);
-    builder.addBooleanProperty("At Home Position", this::isAtHomePosition, null);
-    builder.addBooleanProperty("Stalled", this::isStalled, null);
+    super.initSendable(builder);
+    builder.addDoubleProperty("Target Angle (deg)",  () -> Utils.showDouble(targetAngleDegrees), null);
+    builder.addDoubleProperty("Current Angle (deg)", () -> Utils.showDouble(getAngleDegrees()), null);
+    builder.addDoubleProperty("Current (A)",         () -> Utils.showDouble(climberMotor.getOutputCurrent()), null);
+    builder.addDoubleProperty("Temp (C)",            () -> Utils.showDouble(climberMotor.getMotorTemperature()), null);
   }
 }

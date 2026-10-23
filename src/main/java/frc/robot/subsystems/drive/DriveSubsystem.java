@@ -70,12 +70,12 @@ import frc.robot.util.Utils;
  * 2. PhotonVision integration via VisionSubsystem
  * 3. Slew rate limiting for smoother joystick control
  */
-public class SwerveSubsystem extends SubsystemBase {
+public class DriveSubsystem extends SubsystemBase {
   // Gyroscope
   private final Navx2Gyro gyro;
 
   // Swerve modules - ensure indexed order is 0 = FL, 1 = FR, 2 = BL, 3 = BR
-  private final SwerveModule[] modules;
+  private final DriveModule[] modules;
 
   // Kinematics and odometry
   private final SwerveDriveKinematics kinematics;
@@ -92,9 +92,9 @@ public class SwerveSubsystem extends SubsystemBase {
   private static final DriveFeedforwards kZeroFeedforwards = DriveFeedforwards.zeros(4);
 
   // Slew rate limiters for joystick inputs to prevent sudden changes in speed
-  private final SlewRateLimiter xLimiter = new SlewRateLimiter(SwerveConstants.kTranslationSlewRateLimit);
-  private final SlewRateLimiter yLimiter = new SlewRateLimiter(SwerveConstants.kTranslationSlewRateLimit);
-  private final SlewRateLimiter rLimiter = new SlewRateLimiter(SwerveConstants.kRotationSlewRateLimit);
+  private final SlewRateLimiter xLimiter = new SlewRateLimiter(DriveConstants.kTranslationSlewRateLimit);
+  private final SlewRateLimiter yLimiter = new SlewRateLimiter(DriveConstants.kTranslationSlewRateLimit);
+  private final SlewRateLimiter rLimiter = new SlewRateLimiter(DriveConstants.kRotationSlewRateLimit);
 
   // Current robot state
   private boolean fieldRelative = true;
@@ -122,7 +122,7 @@ public class SwerveSubsystem extends SubsystemBase {
    * Creates a new swerve DriveSubsystem using the YAGSL library.
    * @param directory The directory containing the swerve drive JSON configuration
    */
-  public SwerveSubsystem() {
+  public DriveSubsystem() {
     // Create the gyro
     gyro = new Navx2Gyro();
 
@@ -130,51 +130,51 @@ public class SwerveSubsystem extends SubsystemBase {
     Timer.delay(0.1);
 
     // Initialize swerve modules
-    modules = new SwerveModule[] {
-      new SwerveModule(
+    modules = new DriveModule[] {
+      new DriveModule(
         "FL",
         CANConstants.kFrontLeftDriveID,
         CANConstants.kFrontLeftSteerID,
-        SwerveConstants.kFrontLeftDriveInverted,
-        SwerveConstants.kFrontLeftSteerInverted,
+        DriveConstants.kFrontLeftDriveInverted,
+        DriveConstants.kFrontLeftSteerInverted,
         AnalogConstants.kFrontLeftAbsEncoderID,
-        SwerveConstants.kFrontLeftAbsEncoderOffsetRadians,
-        SwerveConstants.kFrontLeftAbsEncoderInverted
+        DriveConstants.kFrontLeftAbsEncoderOffsetRadians,
+        DriveConstants.kFrontLeftAbsEncoderInverted
       ),
-      new SwerveModule(
+      new DriveModule(
         "FR",
         CANConstants.kFrontRightDriveID,
         CANConstants.kFrontRightSteerID,
-        SwerveConstants.kFrontRightDriveInverted,
-        SwerveConstants.kFrontRightSteerInverted,
+        DriveConstants.kFrontRightDriveInverted,
+        DriveConstants.kFrontRightSteerInverted,
         AnalogConstants.kFrontRightAbsEncoderID,    
-        SwerveConstants.kFrontRightAbsEncoderOffsetRadians,
-        SwerveConstants.kFrontRightAbsEncoderInverted
+        DriveConstants.kFrontRightAbsEncoderOffsetRadians,
+        DriveConstants.kFrontRightAbsEncoderInverted
       ),
-      new SwerveModule(
+      new DriveModule(
         "BL",
         CANConstants.kBackLeftDriveID,
         CANConstants.kBackLeftSteerID,
-        SwerveConstants.kBackLeftDriveInverted,
-        SwerveConstants.kBackLeftSteerInverted,
+        DriveConstants.kBackLeftDriveInverted,
+        DriveConstants.kBackLeftSteerInverted,
         AnalogConstants.kBackLeftAbsEncoderID,
-        SwerveConstants.kBackLeftAbsEncoderOffsetRadians,
-        SwerveConstants.kBackLeftAbsEncoderInverted
+        DriveConstants.kBackLeftAbsEncoderOffsetRadians,
+        DriveConstants.kBackLeftAbsEncoderInverted
       ),
-      new SwerveModule(
+      new DriveModule(
         "BR",
         CANConstants.kBackRightDriveID,
         CANConstants.kBackRightSteerID,
-        SwerveConstants.kBackRightDriveInverted,
-        SwerveConstants.kBackRightSteerInverted,
+        DriveConstants.kBackRightDriveInverted,
+        DriveConstants.kBackRightSteerInverted,
         AnalogConstants.kBackRightAbsEncoderID,
-        SwerveConstants.kBackRightAbsEncoderOffsetRadians,
-        SwerveConstants.kBackRightAbsEncoderInverted
+        DriveConstants.kBackRightAbsEncoderOffsetRadians,
+        DriveConstants.kBackRightAbsEncoderInverted
       )
     };
 
     // Initialize swerve drive kinematics
-    kinematics = new SwerveDriveKinematics(SwerveConstants.kSwerveModuleTranslations);
+    kinematics = new SwerveDriveKinematics(DriveConstants.kSwerveModuleTranslations);
     
     // Initialize pose estimator for vision integration
     poseEstimator = new SwerveDrivePoseEstimator(
@@ -188,8 +188,8 @@ public class SwerveSubsystem extends SubsystemBase {
 
     // Initialize the swerve setpoint generator
     setpointGenerator = new SwerveSetpointGenerator(
-      SwerveConstants.kRobotConfig, // The robot configuration. This is the same config used for generating trajectories and running path following commands.
-      SwerveConstants.kSteerMaxAngularSpeedRadsPerSecond // The max rotation velocity of a swerve module steer motor in radians per second.
+      DriveConstants.kRobotConfig, // The robot configuration. This is the same config used for generating trajectories and running path following commands.
+      DriveConstants.kSteerMaxAngularSpeedRadsPerSecond // The max rotation velocity of a swerve module steer motor in radians per second.
     );
     
     // Initialize the drive setpoint
@@ -205,7 +205,7 @@ public class SwerveSubsystem extends SubsystemBase {
         new PIDConstants(5.0, 0.0, 0.0), // Translation
         new PIDConstants(5.0, 0.0, 0.0)  // Rotation
       ),
-      SwerveConstants.kRobotConfig, // Robot configuration
+      DriveConstants.kRobotConfig, // Robot configuration
       Utils::isRedAlliance, // Method to flip path based on alliance color
       this // Reference to this subsystem to set requirements
     );
@@ -271,7 +271,7 @@ public class SwerveSubsystem extends SubsystemBase {
    */
   private void driveRobotRelative(ChassisSpeeds speeds, DriveFeedforwards feedforwards) {
     // Drive with setpoint generator if necessary
-    if (SwerveConstants.kUseSetpointGenerator) {
+    if (DriveConstants.kUseSetpointGenerator) {
       driveWithSetpointGenerator(speeds);
       return;
     }
@@ -288,7 +288,7 @@ public class SwerveSubsystem extends SubsystemBase {
     Force[] desiredForces = ff.linearForces();
 
     // Compensate for skew when translating and rotating simultaneously
-    speeds = ChassisSpeeds.discretize(speeds, SwerveConstants.kPeriodicTimeSeconds);
+    speeds = ChassisSpeeds.discretize(speeds, DriveConstants.kPeriodicTimeSeconds);
 
     // Compute the desired swerve module states from the chassis speeds
     SwerveModuleState[] desiredStates = kinematics.toSwerveModuleStates(speeds);
@@ -299,12 +299,12 @@ public class SwerveSubsystem extends SubsystemBase {
     for (SwerveModuleState s : desiredStates) {
       maxRequested = Math.max(maxRequested, Math.abs(s.speedMetersPerSecond));
     }
-    double desatScale = maxRequested > SwerveConstants.kMaxSpeedMetersPerSecond
-      ? SwerveConstants.kMaxSpeedMetersPerSecond / maxRequested
+    double desatScale = maxRequested > DriveConstants.kMaxSpeedMetersPerSecond
+      ? DriveConstants.kMaxSpeedMetersPerSecond / maxRequested
       : 1.0;
 
     // Desaturate the wheel speeds to ensure they are within the maximum allowed speed
-    SwerveDriveKinematics.desaturateWheelSpeeds(desiredStates, SwerveConstants.kMaxSpeedMetersPerSecond);
+    SwerveDriveKinematics.desaturateWheelSpeeds(desiredStates, DriveConstants.kMaxSpeedMetersPerSecond);
 
     // Set each swerve module state directly from the next calculated setpoint
     for (int i = 0; i < 4; i++) {
@@ -340,7 +340,7 @@ public class SwerveSubsystem extends SubsystemBase {
    */
   private void driveWithSetpointGenerator(ChassisSpeeds speeds) {
     // Skip if the setpoint generator is disabled
-    if (!SwerveConstants.kUseSetpointGenerator) {
+    if (!DriveConstants.kUseSetpointGenerator) {
       return;
     }
 
@@ -350,7 +350,7 @@ public class SwerveSubsystem extends SubsystemBase {
     }
 
     // Create a new drive setpoint based on the current drive setpoint & the desired chassis speeds.
-    driveSetpoint = setpointGenerator.generateSetpoint(driveSetpoint, speeds, SwerveConstants.kPeriodicTimeSeconds);
+    driveSetpoint = setpointGenerator.generateSetpoint(driveSetpoint, speeds, DriveConstants.kPeriodicTimeSeconds);
     
     // If the generator produced garbage, reset from the real module states and skip this cycle
     if (!isValidSpeeds(driveSetpoint.robotRelativeSpeeds())) {
@@ -503,7 +503,7 @@ public class SwerveSubsystem extends SubsystemBase {
    * @return The default starting Pose2d
    */
   private Pose2d getSeedPose() {    
-    return Utils.isRedAlliance() ? SwerveConstants.kRedSeedPose : SwerveConstants.kBlueSeedPose;
+    return Utils.isRedAlliance() ? DriveConstants.kRedSeedPose : DriveConstants.kBlueSeedPose;
   }
 
   /**
@@ -699,7 +699,7 @@ public class SwerveSubsystem extends SubsystemBase {
       }
 
       // Reject timestamps older than 0.3 seconds
-      if ((now - timestamp) > SwerveConstants.kVisionMeasurementMaxAge) {
+      if ((now - timestamp) > DriveConstants.kVisionMeasurementMaxAge) {
         rejectedVisionCount++;
         return;
       }
@@ -716,8 +716,8 @@ public class SwerveSubsystem extends SubsystemBase {
       double linearSpeed = Math.hypot(speeds.vxMetersPerSecond, speeds.vyMetersPerSecond);
       double angularSpeed = Math.abs(speeds.omegaRadiansPerSecond);
       if (
-        angularSpeed > SwerveConstants.kVisionMaxAngularVelocityRadPerSec ||
-        linearSpeed > SwerveConstants.kVisionMaxLinearVelocityMetersPerSec
+        angularSpeed > DriveConstants.kVisionMaxAngularVelocityRadPerSec ||
+        linearSpeed > DriveConstants.kVisionMaxLinearVelocityMetersPerSec
       ) {
         blurRejectedVisionCount++;
         return;
@@ -727,10 +727,10 @@ public class SwerveSubsystem extends SubsystemBase {
       //  - we haven't accepted any vision yet (odometry-only pose may already be stale), or
       //  - we've rejected several in a row (likely genuine drift, not a bad reading)
       double translationDistance = getPose().getTranslation().getDistance(visionPose.getTranslation());
-      boolean isJump = translationDistance > SwerveConstants.kVisionMaxTranslationJumpMeters;
+      boolean isJump = translationDistance > DriveConstants.kVisionMaxTranslationJumpMeters;
       boolean shouldGateJump = isJump
         && acceptedVisionCount > 0
-        && consecutiveRejectedJumps < SwerveConstants.kMaxConsecutiveVisionRejections;
+        && consecutiveRejectedJumps < DriveConstants.kMaxConsecutiveVisionRejections;
 
       if (shouldGateJump) {
         rejectedVisionCount++;
@@ -815,8 +815,8 @@ public class SwerveSubsystem extends SubsystemBase {
         leftMeters >= 0 ? "Left" : "Right", Math.abs(leftMeters),
         rotateDegrees >= 0 ? "CCW" : "CW", Math.abs(rotateDegrees)));
     SmartDashboard.putBoolean("Auto Align/In Position",
-        totalErrorMeters < SwerveConstants.kStartPoseTranslationToleranceMeters
-        && Math.abs(rotateDegrees) < SwerveConstants.kStartPoseRotationToleranceDegrees);
+        totalErrorMeters < DriveConstants.kStartPoseTranslationToleranceMeters
+        && Math.abs(rotateDegrees) < DriveConstants.kStartPoseRotationToleranceDegrees);
 
     // Optional: overlay both poses on a Field2d for a visual "you are here" /
     // "target" view on Shuffleboard/Glass, if you already keep one around
@@ -880,12 +880,12 @@ public class SwerveSubsystem extends SubsystemBase {
       double ySpeed = 0;
 
       // Apply circular deadband for translation 
-      if (magnitude > SwerveConstants.kJoystickDeadband) {
+      if (magnitude > DriveConstants.kJoystickDeadband) {
         // Rescale so speed starts at 0 at the edge of the deadband
-        double clippedMagnitude = MathUtil.clamp((magnitude - SwerveConstants.kJoystickDeadband) / (1.0 - SwerveConstants.kJoystickDeadband), 0.0, 1.0);
+        double clippedMagnitude = MathUtil.clamp((magnitude - DriveConstants.kJoystickDeadband) / (1.0 - DriveConstants.kJoystickDeadband), 0.0, 1.0);
         
         // Apply squaring/cubing to the clipped magnitude
-        double curvedMagnitude = Math.pow(clippedMagnitude, SwerveConstants.kJoystickInputExponent);
+        double curvedMagnitude = Math.pow(clippedMagnitude, DriveConstants.kJoystickInputExponent);
 
         // Re-apply the direction sign to the new magnitude
         xSpeed = (rawX / magnitude) * curvedMagnitude;
@@ -893,12 +893,12 @@ public class SwerveSubsystem extends SubsystemBase {
       }
 
       // Apply 1D deadband and squaring for rotation
-      double rSpeed = MathUtil.applyDeadband(rawR, SwerveConstants.kJoystickDeadband);
-      rSpeed = Math.copySign(Math.pow(Math.abs(rSpeed), SwerveConstants.kJoystickInputExponent), rSpeed);
+      double rSpeed = MathUtil.applyDeadband(rawR, DriveConstants.kJoystickDeadband);
+      rSpeed = Math.copySign(Math.pow(Math.abs(rSpeed), DriveConstants.kJoystickInputExponent), rSpeed);
 
       // If not using the setpoint generator, apply slew rate 
       // limiting to smooth out sudden changes in speed
-      if (!SwerveConstants.kUseSetpointGenerator) {
+      if (!DriveConstants.kUseSetpointGenerator) {
         xSpeed = xLimiter.calculate(xSpeed);
         ySpeed = yLimiter.calculate(ySpeed);
         rSpeed = rLimiter.calculate(rSpeed);
@@ -906,15 +906,15 @@ public class SwerveSubsystem extends SubsystemBase {
 
       // If slow mode is enabled, scale down speeds for finer control
       if (isSlowMode()) {
-        xSpeed *= SwerveConstants.kSlowModeScaling;
-        ySpeed *= SwerveConstants.kSlowModeScaling;
-        rSpeed *= SwerveConstants.kSlowModeScaling;
+        xSpeed *= DriveConstants.kSlowModeScaling;
+        ySpeed *= DriveConstants.kSlowModeScaling;
+        rSpeed *= DriveConstants.kSlowModeScaling;
       }
 
       // Convert the joystick's -1..1 to m/s and rad/s
-      double xSpeedMPS = xSpeed * SwerveConstants.kMaxSpeedMetersPerSecond;
-      double ySpeedMPS = ySpeed * SwerveConstants.kMaxSpeedMetersPerSecond;
-      double rSpeedRad = rSpeed * SwerveConstants.kMaxAngularSpeedRadsPerSecond;
+      double xSpeedMPS = xSpeed * DriveConstants.kMaxSpeedMetersPerSecond;
+      double ySpeedMPS = ySpeed * DriveConstants.kMaxSpeedMetersPerSecond;
+      double rSpeedRad = rSpeed * DriveConstants.kMaxAngularSpeedRadsPerSecond;
 
       // Create robot-relative chassis speeds
       ChassisSpeeds chassisSpeeds;
@@ -1007,7 +1007,7 @@ public class SwerveSubsystem extends SubsystemBase {
 
       // Create a staging pose to approach the target pose from a safe distance
       Pose2d stagingPose = targetPose.transformBy(new Transform2d(
-        -SwerveConstants.kStagingDistanceMeters, 
+        -DriveConstants.kStagingDistanceMeters, 
         0.0, 
         Rotation2d.kZero
       ));
@@ -1016,21 +1016,21 @@ public class SwerveSubsystem extends SubsystemBase {
       // unless we are already close enough to the target pose
       Command stagingCommand = AutoBuilder.pathfindToPose(
         stagingPose, 
-        SwerveConstants.kStagingConstraints, 
-        SwerveConstants.kStagingEndVelocityMPS
-      ).unless(() -> distanceTo(targetPose) < SwerveConstants.kStagingDistanceMeters + 0.3);
+        DriveConstants.kStagingConstraints, 
+        DriveConstants.kStagingEndVelocityMPS
+      ).unless(() -> distanceTo(targetPose) < DriveConstants.kStagingDistanceMeters + 0.3);
 
       // Create a command to pathfind precisely to the target pose
       Command preciseCommand = AutoBuilder.pathfindToPose(
         targetPose, 
-        SwerveConstants.kPrecisionConstraints, 
+        DriveConstants.kPrecisionConstraints, 
         0.0
       );
 
       // Chain the staging and precise commands together with a timeout
       return stagingCommand
         .andThen(preciseCommand)
-        .withTimeout(SwerveConstants.kAlignTimeoutSeconds)
+        .withTimeout(DriveConstants.kAlignTimeoutSeconds)
         .withName("Drive_PathfindToPose");
     }, Set.of(this));
   }
@@ -1065,7 +1065,7 @@ public class SwerveSubsystem extends SubsystemBase {
       // then follow the path with its own constraints
       return AutoBuilder.pathfindThenFollowPath(
         PathPlannerPath.fromPathFile(pathName), 
-        SwerveConstants.kStagingConstraints
+        DriveConstants.kStagingConstraints
       )
       .withName("Drive_PathfindThenFollowPath_" + pathName);
     } catch (Exception ex) {

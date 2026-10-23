@@ -1,19 +1,25 @@
 package frc.robot.commands;
 
 import edu.wpi.first.wpilibj2.command.Command;
+import edu.wpi.first.wpilibj2.command.Commands;
 
+import frc.robot.Constants.FieldConstants;
 import frc.robot.subsystems.climber.ClimberSubsystem;
-import frc.robot.subsystems.drive.SwerveSubsystem;
-import frc.robot.subsystems.led.LEDSubsystem;
-import frc.robot.subsystems.vision.VisionSubsystem;
+import frc.robot.subsystems.drive.DriveSubsystem;
+import frc.robot.subsystems.feeder.FeederSubsystem;
+import frc.robot.subsystems.flywheel.FlywheelSubsystem;
+import frc.robot.subsystems.turret.TurretSubsystem;
+import frc.robot.util.Utils;
 
 /**
  * Autos command factory that defines autonomous routines for the robot.
  */
 public class Autos {
-  private final SwerveSubsystem driveSubsystem;
-  private final LEDSubsystem ledSubsystem;
-  private final VisionSubsystem visionSubsystem;
+  private final Feedback feedback;
+  private final DriveSubsystem driveSubsystem;
+  private final FeederSubsystem feederSubsystem;
+  private final FlywheelSubsystem flywheelSubsystem;
+  private final TurretSubsystem turretSubsystem;
   private final ClimberSubsystem climberSubsystem;
 
   /**
@@ -24,14 +30,18 @@ public class Autos {
    * @param climberSubsystem the climber subsystem to control
    */
   public Autos(
-    SwerveSubsystem driveSubsystem, 
-    LEDSubsystem ledSubsystem,
-    VisionSubsystem visionSubsystem,
+    Feedback feedback,
+    DriveSubsystem driveSubsystem,
+    FeederSubsystem feederSubsystem,
+    FlywheelSubsystem flywheelSubsystem,
+    TurretSubsystem turretSubsystem,
     ClimberSubsystem climberSubsystem
   ) {
+    this.feedback = feedback;
     this.driveSubsystem = driveSubsystem;
-    this.ledSubsystem = ledSubsystem;
-    this.visionSubsystem = visionSubsystem;
+    this.feederSubsystem = feederSubsystem;
+    this.flywheelSubsystem = flywheelSubsystem;
+    this.turretSubsystem = turretSubsystem;
     this.climberSubsystem = climberSubsystem;
   }
 
@@ -40,7 +50,33 @@ public class Autos {
    * @return the command representing the autonomous routine
    */
   public Command exampleAutoRoutine() {
-    return driveSubsystem.alignToTagCommand(() -> 1, () -> 0, () -> 0).withTimeout(2)
-      .andThen(ledSubsystem.successCommand());
+    return Commands.parallel(
+      driveSubsystem.alignToTagCommand(
+        () -> 1, 
+        () -> 0.25, 
+        () -> 0.25
+      ),
+      climberSubsystem.toLowerLimitCommand()
+    )
+    .withTimeout(5)
+    .andThen(Commands.parallel(
+      Commands.waitUntil(
+        flywheelSubsystem.isFlywheelAtTargetTrigger
+        .and(turretSubsystem.isAtTargetTrigger)
+      ).andThen(feederSubsystem.feedCommand()),
+      turretSubsystem.aimAtPoseCommand(
+        () -> turretSubsystem.getPose(driveSubsystem.getPose()), 
+        () -> Utils.isRedAlliance() ? FieldConstants.kRedHubPose : FieldConstants.kBlueHubPose,
+        () -> driveSubsystem.getFieldRelativeSpeeds()
+      ),
+      flywheelSubsystem.shootAtPoseCommand(      
+        () -> turretSubsystem.getPose(driveSubsystem.getPose()), 
+        () -> Utils.isRedAlliance() ? FieldConstants.kRedHubPose : FieldConstants.kBlueHubPose
+      )
+    ))
+    .withTimeout(10)
+    .andThen(driveSubsystem.pathfindToPoseCommand(null))
+    .andThen(climberSubsystem.toLevelOneCommand())
+    .andThen(feedback.successCommand());
   }
 }

@@ -34,7 +34,7 @@ public class Navx2Gyro implements Sendable {
     waitForGyroCalibration();
 
     // Set the gyro angle adjustment to match the physical mounting of the gyro on the robot
-    gyro.setAngleAdjustment(SwerveConstants.kGyroAngleOffsetDegrees);
+    gyro.setAngleAdjustment(DriveConstants.kGyroAngleOffsetDegrees);
 
     // Initialize dashboard values
     SmartDashboard.putData("Drive/Gyro", this);

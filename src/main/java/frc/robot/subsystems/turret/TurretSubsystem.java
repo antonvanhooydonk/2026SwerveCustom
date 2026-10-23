@@ -4,130 +4,130 @@
 
 package frc.robot.subsystems.turret;
 
+import static edu.wpi.first.units.Units.Rotations;
+import static edu.wpi.first.units.Units.RotationsPerSecond;
 import static edu.wpi.first.units.Units.Volts;
 
+import java.util.Arrays;
 import java.util.function.DoubleSupplier;
 import java.util.function.Supplier;
 
-import com.ctre.phoenix6.SignalLogger;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
-import com.ctre.phoenix6.controls.Follower;
 import com.ctre.phoenix6.controls.MotionMagicVoltage;
-import com.ctre.phoenix6.controls.VelocityVoltage;
 import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.InvertedValue;
-import com.ctre.phoenix6.signals.MotorAlignmentValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
+import com.ctre.phoenix6.sim.ChassisReference;
+import com.ctre.phoenix6.sim.TalonFXSimState;
 
 import edu.wpi.first.math.MathUtil;
+import edu.wpi.first.math.filter.Debouncer;
 import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Pose3d;
+import edu.wpi.first.math.geometry.Rotation3d;
+import edu.wpi.first.math.kinematics.ChassisSpeeds;
+import edu.wpi.first.math.system.plant.DCMotor;
+import edu.wpi.first.math.system.plant.LinearSystemId;
 import edu.wpi.first.math.util.Units;
+import edu.wpi.first.networktables.NetworkTableInstance;
+import edu.wpi.first.networktables.StructPublisher;
 import edu.wpi.first.util.sendable.SendableBuilder;
+import edu.wpi.first.wpilibj.RobotBase;
+import edu.wpi.first.wpilibj.RobotController;
+import edu.wpi.first.wpilibj.simulation.DCMotorSim;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
-import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import edu.wpi.first.wpilibj2.command.button.Trigger;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 
 import frc.robot.Constants.CANConstants;
+import frc.robot.Constants.TuningConstants;
+import frc.robot.util.Conversions;
+import frc.robot.util.ShotCalculator;
+import frc.robot.util.TalonFXFactory;
 import frc.robot.util.Utils;
 
 /**
- * Turret subsystem using a Falcon 500 (TalonFX) for rotation and dual
- * Kraken X60 (TalonFX) motors in a follower configuration for the flywheel.
+ * Turret rotation subsystem using a Falcon 500 (TalonFX). Rotation only --
+ * the flywheel shooter mounted on the turret is a separate ShooterSubsystem
+ * so the two can be commanded and scheduled independently.
+ *
+ * NOTE: This subsystem assumes the turret has a LIMITED mechanical range of
+ * motion (no slip rings) bounded by TurretConstants.kMinAngleDegrees and
+ * kMaxAngleDegrees. setAngle() will refuse to wind past that range even
+ * if the shortest path to a target would require it.
  *
  * Turret tuning process:
  * 1. Run turret SysId to characterize kS, kV, kA
  * 2. Tune MotionMagic cruise velocity and acceleration
  * 3. Tune kP until fast response without overshoot
- *
- * Flywheel tuning process:
- * 1. Run flywheel SysId to characterize kS, kV, kA
- * 2. Start with feedforward only (kP = 0)
- * 3. Add minimal kP if steady-state error remains (usually 0.05 - 0.2)
- * 4. Avoid kI and kD unless absolutely necessary
  */
 public class TurretSubsystem extends SubsystemBase {
   // Turret hardware
   private final TalonFX turretMotor;
-  private final TalonFXConfiguration turretConfig;
-
-  // Flywheel hardware - leader and follower
-  private final TalonFX flywheelLeader;
-  private final TalonFX flywheelFollower;
-  private final TalonFXConfiguration flywheelConfig;
 
   // Turret control request
-  private final MotionMagicVoltage turretMotionMagicRequest;
+  private final MotionMagicVoltage motionMagicRequest;
 
-  // Flywheel control requests
-  private final VelocityVoltage flywheelVelocityRequest;
+  // Cached target (for telemetry)
+  private double targetAngleDegrees = 0.0;
 
-  // Cached targets (for telemetry)
-  private double targetTurretAngleDegrees = 0.0;
-  private double targetFlywheelRPM = 0.0;
-
-  // SysId routines
+  // SysId routine
   private final SysIdRoutine turretSysIdRoutine;
-  private final SysIdRoutine flywheelSysIdRoutine;
+
+  // Tuning constants from the SmartDashboard (for real-time tuning)
+  private double[] lastTuning = new double[0];
+
+  // Simulation (null on a real robot)
+  private DCMotorSim turretSim;
+  private TalonFXSimState turretMotorSim;
+  private StructPublisher<Pose3d> simPosePublisher;
 
   /**
    * Creates a new TurretSubsystem
    */
   public TurretSubsystem() {
-    // Initialize turret hardware
-    turretMotor = new TalonFX(CANConstants.kTurretMotorID);
-    turretConfig = new TalonFXConfiguration();
+    // Create the turret motor with the given configuration
+    turretMotor = TalonFXFactory.createMotor(CANConstants.kTurretMotorID, getMotorConfig());
 
-    // Initialize flywheel hardware
-    flywheelLeader = new TalonFX(CANConstants.kFlywheelLeaderMotorID);
-    flywheelFollower = new TalonFX(CANConstants.kFlywheelFollowerMotorID);
-    flywheelConfig = new TalonFXConfiguration();
+    // Initialize control request
+    motionMagicRequest = new MotionMagicVoltage(0).withSlot(0);
 
-    // Initialize control requests
-    turretMotionMagicRequest = new MotionMagicVoltage(0).withSlot(0);
-    flywheelVelocityRequest = new VelocityVoltage(0).withSlot(0).withEnableFOC(true);
+    // NOTE: Do NOT zero the encoder here. The TalonFX keeps its position across a robot code
+    // restart (crash, brownout of the roboRIO, redeploy) and only resets to 0 on a power cycle.
+    // Zeroing in the constructor would silently shift the soft limits whenever the code restarts
+    // with the turret away from home. Use setHomePositionCommand() (disabled-only) instead.
+    turretMotor.getPosition().waitForUpdate(0.25); // make sure the logged value is not a stale 0
+    Utils.logInfo("Turret startup angle (deg): " + Utils.showDouble(getAngleDegrees()));
 
-    // Configure motors
-    configureTurretMotor();
-    configureFlywheelMotors();
-
-    // Zero turret encoder at startup - turret must be at home position
-    zeroTurretEncoder();
-
-    // Initialize SysId routines
+    // Initialize SysId routine
     turretSysIdRoutine = new SysIdRoutine(
-      new SysIdRoutine.Config(
-        null,
-        null,
-        null,
-        state -> SignalLogger.writeString("turret-sysid-state", state.toString())
-      ),
+      new SysIdRoutine.Config(null, null, null, null),
       new SysIdRoutine.Mechanism(
         volts -> turretMotor.setControl(new VoltageOut(volts.in(Volts))),
-        null,
+        log -> log.motor("turret")
+          .voltage(Volts.of(turretMotor.getMotorVoltage().getValueAsDouble()))
+          .angularPosition(Rotations.of(turretMotor.getPosition().getValueAsDouble()))
+          .angularVelocity(RotationsPerSecond.of(turretMotor.getVelocity().getValueAsDouble())),
         this
       )
     );
 
-    flywheelSysIdRoutine = new SysIdRoutine(
-      new SysIdRoutine.Config(
-        null,
-        null,
-        null,
-        state -> SignalLogger.writeString("flywheel-sysid-state", state.toString())
-      ),
-      new SysIdRoutine.Mechanism(
-        volts -> flywheelLeader.setControl(new VoltageOut(volts.in(Volts))),
-        null,
-        this
-      )
-    );
+    // Set default command
+    setDefaultCommand(stopCommand());
 
     // Add data to dashboard
     SmartDashboard.putData("Turret", this);
+
+    // Initialize tuning constants on the SmartDashboard for real-time tuning
+    initTuningDashboard();
+
+    // Initialize simulation if running in simulation mode
+    if (RobotBase.isSimulation()) {
+      initSimulation();
+    }
 
     // Output initialization progress
     Utils.logInfo("Turret subsystem initialized");
@@ -135,245 +135,299 @@ public class TurretSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
-    // Nothing needed - TalonFX handles control loops onboard
+    getTuningFromDashboard();
   }
 
-  // ----------------------------------------------------------------------------------------
-  // Private configuration methods
-  // ----------------------------------------------------------------------------------------
+  @Override
+  public void simulationPeriodic() {
+    turretMotorSim.setSupplyVoltage(RobotController.getBatteryVoltage());
+
+    turretSim.setInputVoltage(turretMotorSim.getMotorVoltage());
+    turretSim.update(0.020);
+
+    // Hard stops just past the soft limits, so momentum can't carry the turret through them
+    double minRad = Units.degreesToRadians(TurretConstants.kMinAngleDegrees);
+    double maxRad = Units.degreesToRadians(TurretConstants.kMaxAngleDegrees);
+    double pos = turretSim.getAngularPositionRad();
+    double vel = turretSim.getAngularVelocityRadPerSec();
+    if ((pos < minRad && vel < 0) || (pos > maxRad && vel > 0)) {
+      turretSim.setState(MathUtil.clamp(pos, minRad, maxRad), 0.0);
+    }
+
+    turretMotorSim.setRawRotorPosition(Conversions.degreesToRotations(
+      turretSim.getAngularPositionRad(), 
+      TurretConstants.kGearRatio
+    ));
+    turretMotorSim.setRotorVelocity(Conversions.degreesToRotations(
+      turretSim.getAngularVelocityRadPerSec(), 
+      TurretConstants.kGearRatio
+    ));
+
+    // Robot-relative turret rotation for AdvantageScope's 3D robot model
+    simPosePublisher.set(new Pose3d(0, 0, 0, new Rotation3d(0, 0, turretSim.getAngularPositionRad())));
+  }
 
   /**
-   * Configures the turret rotation motor
+   * Initialize the simulation for the turret subsystem. This sets 
+   * up the physics model and visualization for simulation mode.
    */
-  private void configureTurretMotor() {
-    turretConfig.MotorOutput
+  private void initSimulation() {
+    turretMotorSim = turretMotor.getSimState();
+
+    // Must match the InvertedValue in getMotorConfig()
+    turretMotorSim.Orientation = ChassisReference.CounterClockwise_Positive;
+
+    DCMotor gearbox = DCMotor.getFalcon500(1);
+    turretSim = new DCMotorSim(
+      LinearSystemId.createDCMotorSystem(
+        gearbox,
+        TurretConstants.kMOIKgMetersSq,
+        TurretConstants.kGearRatio
+      ),
+      gearbox
+    );
+
+    // Start at home (0), matching the TalonFX's power-on position
+    turretSim.setState(0.0, 0.0);
+    turretMotorSim.setRawRotorPosition(0.0);
+
+    simPosePublisher = NetworkTableInstance.getDefault()
+      .getStructTopic("Sim/TurretPose", Pose3d.struct)
+      .publish();
+  }
+
+  /**
+   * Initialize tuning constants on the SmartDashboard for real-time tuning.
+   * This method is called once during subsystem initialization.
+   */
+  private void initTuningDashboard() {
+    if (TuningConstants.kTuneTurret) {
+      SmartDashboard.putNumber("Turret/P", TurretConstants.kP);
+      SmartDashboard.putNumber("Turret/I", TurretConstants.kI);
+      SmartDashboard.putNumber("Turret/D", TurretConstants.kD);
+      SmartDashboard.putNumber("Turret/kS", TurretConstants.kS);
+      SmartDashboard.putNumber("Turret/kV", TurretConstants.kV);
+      SmartDashboard.putNumber("Turret/kA", TurretConstants.kA);
+    }
+  }
+
+  /**
+   * Read tuning constants from SmartDashboard and apply them to the climber motor.
+   * This allows for real-time tuning of PIDF constants without redeploying code.
+   */
+  private void getTuningFromDashboard() {
+    if (!TuningConstants.kTuneTurret) return;
+
+    // Get the current tuning values from the SmartDashboard
+    double[] current = {
+      SmartDashboard.getNumber("Turret/P", TurretConstants.kP),
+      SmartDashboard.getNumber("Turret/I", TurretConstants.kI),
+      SmartDashboard.getNumber("Turret/D", TurretConstants.kD),
+      SmartDashboard.getNumber("Turret/kS", TurretConstants.kS),
+      SmartDashboard.getNumber("Turret/kV", TurretConstants.kV),
+      SmartDashboard.getNumber("Turret/kA", TurretConstants.kA)
+    };
+    if (Arrays.equals(current, lastTuning)) return;
+
+    // Cache the current tuning values to avoid unnecessary updates
+    lastTuning = current;
+
+    // Update the controller with the new constants
+    TalonFXConfiguration tuneConfig = new TalonFXConfiguration();
+    tuneConfig.Slot0
+      .withKP(current[0])
+      .withKI(current[1])
+      .withKD(current[2])
+      .withKS(current[3])
+      .withKV(current[4])
+      .withKA(current[5]);
+    
+    TalonFXFactory.applyConfig(turretMotor, tuneConfig);
+  }
+  
+  /**
+   * Configure the subsystem motors with the appropriate settings
+   */
+  private TalonFXConfiguration getMotorConfig() {
+    TalonFXConfiguration config = new TalonFXConfiguration();
+
+    // Set basic motor configuration parameters
+    config.MotorOutput
       .withNeutralMode(NeutralModeValue.Brake)
       .withInverted(InvertedValue.CounterClockwise_Positive)
       .withDutyCycleNeutralDeadband(0.001);
 
-    turretConfig.CurrentLimits
+    // Set current limits
+    config.CurrentLimits
       .withSupplyCurrentLimitEnable(true)
-      .withSupplyCurrentLimit(40)
-      .withSupplyCurrentLowerLimit(30)
-      .withSupplyCurrentLowerTime(0.5)
+      .withSupplyCurrentLimit(30)
+      .withSupplyCurrentLowerLimit(20)
+      .withSupplyCurrentLowerTime(1.0)
       .withStatorCurrentLimitEnable(true)
-      .withStatorCurrentLimit(60);
+      .withStatorCurrentLimit(40);
 
-    turretConfig.Voltage
+    // Set voltage limits
+    config.Voltage
       .withPeakForwardVoltage(12)
       .withPeakReverseVoltage(-12)
       .withSupplyVoltageTimeConstant(0.02);
 
-    turretConfig.Slot0
-      .withKP(TurretConstants.kTurretKP)
-      .withKI(TurretConstants.kTurretKI)
-      .withKD(TurretConstants.kTurretKD)
-      .withKS(TurretConstants.kTurretKS)
-      .withKV(TurretConstants.kTurretKV)
-      .withKA(TurretConstants.kTurretKA);
+    // Set PID and feedforward gains
+    config.Slot0
+      .withKP(TurretConstants.kP)
+      .withKI(TurretConstants.kI)
+      .withKD(TurretConstants.kD)
+      .withKS(TurretConstants.kS)
+      .withKV(TurretConstants.kV)
+      .withKA(TurretConstants.kA);
 
-    turretConfig.MotionMagic
-      .withMotionMagicCruiseVelocity(TurretConstants.kTurretCruiseVelocityDPS)
-      .withMotionMagicAcceleration(TurretConstants.kTurretAccelerationDPS2)
-      .withMotionMagicJerk(TurretConstants.kTurretJerkDPS3);
+    // Set motion control parameters
+    config.MotionMagic
+      .withMotionMagicCruiseVelocity(TurretConstants.kCruiseVelocity)
+      .withMotionMagicAcceleration(TurretConstants.kAcceleration)
+      .withMotionMagicJerk(TurretConstants.kJerk);
 
-    turretMotor.getConfigurator().apply(turretConfig);
+    // Set soft limits for the elevator
+    config.SoftwareLimitSwitch
+      .withForwardSoftLimitEnable(true)
+      .withForwardSoftLimitThreshold(Conversions.degreesToRotations(
+        TurretConstants.kMaxAngleDegrees,
+        TurretConstants.kGearRatio
+      ))
+      .withReverseSoftLimitEnable(true)
+      .withReverseSoftLimitThreshold(Conversions.degreesToRotations(
+        TurretConstants.kMinAngleDegrees,
+        TurretConstants.kGearRatio
+      ));
 
-    turretMotor.getPosition().setUpdateFrequency(100.0);
-    turretMotor.getVelocity().setUpdateFrequency(100.0);
-    turretMotor.getMotorVoltage().setUpdateFrequency(50.0);
-    turretMotor.getSupplyCurrent().setUpdateFrequency(50.0);
-    turretMotor.getDeviceTemp().setUpdateFrequency(4.0);
-    turretMotor.optimizeBusUtilization();
-  }
+    // Keep false: ContinuousWrap on motor rotations would ruin turret positioning 
+    config.ClosedLoopGeneral.ContinuousWrap = false;
 
-  /**
-   * Configures the flywheel leader and follower motors
-   */
-  private void configureFlywheelMotors() {
-    flywheelConfig.MotorOutput
-      .withNeutralMode(NeutralModeValue.Coast) // Coast so flywheel spins down naturally
-      .withInverted(InvertedValue.CounterClockwise_Positive)
-      .withDutyCycleNeutralDeadband(0.001);
-
-    flywheelConfig.CurrentLimits
-      .withSupplyCurrentLimitEnable(true)
-      .withSupplyCurrentLimit(60)
-      .withSupplyCurrentLowerLimit(40)
-      .withSupplyCurrentLowerTime(0.5)
-      .withStatorCurrentLimitEnable(true)
-      .withStatorCurrentLimit(80);
-
-    flywheelConfig.Voltage
-      .withPeakForwardVoltage(12)
-      .withPeakReverseVoltage(-12)
-      .withSupplyVoltageTimeConstant(0.02);
-
-    // Velocity PID (slot 0) - velocity in RPS
-    flywheelConfig.Slot0
-      .withKP(TurretConstants.kFlywheelKP)
-      .withKI(TurretConstants.kFlywheelKI)
-      .withKD(TurretConstants.kFlywheelKD)
-      .withKS(TurretConstants.kFlywheelKS)
-      .withKV(TurretConstants.kFlywheelKV)
-      .withKA(TurretConstants.kFlywheelKA);
-
-    flywheelLeader.getConfigurator().apply(flywheelConfig);
-
-    // Optimize CAN status frames on leader
-    flywheelLeader.getVelocity().setUpdateFrequency(100.0);
-    flywheelLeader.getMotorVoltage().setUpdateFrequency(50.0);
-    flywheelLeader.getSupplyCurrent().setUpdateFrequency(50.0);
-    flywheelLeader.getTorqueCurrent().setUpdateFrequency(50.0);
-    flywheelLeader.getDeviceTemp().setUpdateFrequency(4.0);
-    flywheelLeader.optimizeBusUtilization();
-
-    // Configure follower to mirror leader
-    flywheelFollower.setControl(new Follower(CANConstants.kFlywheelLeaderMotorID, MotorAlignmentValue.Opposed));
-
-    // Minimize follower CAN traffic
-    flywheelFollower.getSupplyCurrent().setUpdateFrequency(50.0);
-    flywheelFollower.getDeviceTemp().setUpdateFrequency(4.0);
-    flywheelFollower.optimizeBusUtilization();
+    // Return the motor configuration
+    return config;
   }
 
   // ----------------------------------------------------------------------------------------
-  // Private turret state methods
+  // Private state methods
   // ----------------------------------------------------------------------------------------
 
   /**
-   * Zeros the turret encoder. Turret must be at home position when called.
+   * Sets the turret to a target angle using MotionMagic ensuring the target
+   * angle is within the safe range defined by TurretConstants.
+   * @param angleDegrees Target angle in degrees
    */
-  private void zeroTurretEncoder() {
-    turretMotor.setPosition(0);
+  private void setAngle(double angleDegrees) {
+    // Clamp target to valid range
+    targetAngleDegrees = MathUtil.clamp(
+      Utils.normalizeAngleDegrees(angleDegrees), 
+      TurretConstants.kMinAngleDegrees, 
+      TurretConstants.kMaxAngleDegrees
+    );
+
+    // Convert target angle to motor rotations
+    double targetMotorRotations = Conversions.degreesToRotations(
+      targetAngleDegrees, 
+      TurretConstants.kGearRatio
+    );
+
+    // Set the target position using MotionMagic
+    turretMotor.setControl(motionMagicRequest.withPosition(targetMotorRotations));
+  }
+
+  /**
+   * Sets the turret motor voltage directly (open-loop), with safety checks for limits.
+   * @param volts Voltage to apply to the motor
+   */
+  private void setVoltage(double volts) {
+    // Clamp voltage to safe range
+    volts = MathUtil.clamp(volts, -12, 12);
+
+    // Check if the turret is at the upper limit and trying to move up
+    if (isAtAngle(TurretConstants.kMaxAngleDegrees) && volts > 0) {
+      stop();
+      return;
+    }
+
+    // Check if the turret is at the lower limit and trying to move down
+    if (isAtAngle(TurretConstants.kMinAngleDegrees) && volts < 0) {
+      stop();
+      return;
+    }
+
+    // Set the voltage to the turret motor
+    turretMotor.setControl(new VoltageOut(volts));
   }
 
   /**
    * Gets the current turret angle in degrees, normalized to (-180, 180]
    * @return Current angle in degrees
    */
-  private double getTurretAngleDegrees() {
-    return normalizeAngleDegrees(turretMotor.getPosition().getValueAsDouble());
+  private double getAngleDegrees() {
+    return Utils.normalizeAngleDegrees(Conversions.rotationsToDegrees(
+      turretMotor.getPosition().getValueAsDouble(), 
+      TurretConstants.kGearRatio
+    ));
   }
 
   /**
-   * Sets the turret to a target angle using MotionMagic, taking the shortest path
-   * @param angleDegrees Target angle in degrees
+   * Zeros the turret encoder. Turret must be at home position when called.
    */
-  private void setTurretAngle(double angleDegrees) {
-    double normalizedAngle = normalizeAngleDegrees(angleDegrees);
-
-    // Find shortest path from current angle to target
-    double currentAngle = getTurretAngleDegrees();
-    double delta = normalizeAngleDegrees(normalizedAngle - currentAngle);
-
-    // Add delta to raw motor position to preserve continuity
-    double targetPosition = turretMotor.getPosition().getValueAsDouble() + delta;
-
-    targetTurretAngleDegrees = normalizedAngle;
-    turretMotor.setControl(turretMotionMagicRequest.withPosition(targetPosition));
+  private void resetEncoder() {
+    turretMotor.setPosition(0);
   }
 
   /**
    * Stops the turret motor
    */
-  private void stopTurret() {
+  private void stop() {
     turretMotor.stopMotor();
   }
 
   /**
-   * Gets whether the turret is at its target angle within tolerance
+   * Checks if the turret is at its target angle within tolerance
    * @return True if at target
    */
-  private boolean isTurretAtTarget() {
-    return Math.abs(normalizeAngleDegrees(targetTurretAngleDegrees - getTurretAngleDegrees()))
-        < TurretConstants.kTurretAngleToleranceDegrees;
+  private boolean isAtAngle() {
+    return isAtAngle(targetAngleDegrees);
   }
 
   /**
-   * Normalizes an angle to (-180, 180]
-   * @param angleDegrees Angle in degrees
-   * @return Normalized angle in degrees
+   * Gets whether the turret is at the specified target angle within tolerance
+   * @param targetAngleDegrees The target angle in degrees
+   * @return True if at target
    */
-  private double normalizeAngleDegrees(double angleDegrees) {
-    return MathUtil.inputModulus(angleDegrees, -180.0, 180.0);
-  }
-
-  // ----------------------------------------------------------------------------------------
-  // Private flywheel state methods
-  // ----------------------------------------------------------------------------------------
-
-  /**
-   * Gets the current flywheel velocity in RPM
-   * @return Current velocity in RPM
-   */
-  private double getFlywheelRPM() {
-    // TalonFX velocity is in RPS, convert to RPM
-    return flywheelLeader.getVelocity().getValueAsDouble() * 60.0;
+  private boolean isAtAngle(double targetAngleDegrees) {
+    return MathUtil.isNear(
+      Utils.normalizeAngleDegrees(targetAngleDegrees),
+      getAngleDegrees(),
+      TurretConstants.kAngleToleranceDegrees
+    );
   }
 
   /**
-   * Sets the flywheel to a target velocity in RPM
-   * @param rpm Target velocity in RPM
+   * Gets the turret's pose in field coordinates by applying a transform to the robot's pose.
+   * @param robotPose The current pose of the robot in field coordinates
+   * @return The pose of the turret in field coordinates
    */
-  private void setFlywheelRPM(double rpm) {
-    targetFlywheelRPM = rpm;
-    // Convert RPM to RPS for TalonFX
-    double rps = rpm / 60.0;
-    flywheelLeader.setControl(flywheelVelocityRequest.withVelocity(rps));
-  }
-
-  /**
-   * Stops the flywheel
-   */
-  private void stopFlywheel() {
-    targetFlywheelRPM = 0.0;
-    flywheelLeader.stopMotor();
-  }
-
-  /**
-   * Gets whether the flywheel is at its target velocity within tolerance
-   * @return True if at target velocity
-   */
-  private boolean isFlywheelAtTarget() {
-    // Don't report at target if flywheel is stopped
-    if (targetFlywheelRPM == 0.0) {
-      return false;
-    }
-    return Math.abs(targetFlywheelRPM - getFlywheelRPM()) < TurretConstants.kFlywheelToleranceRPM;
-  }
-
-  /**
-   * Gets whether the flywheel is spinning (above a minimum threshold)
-   * @return True if spinning
-   */
-  private boolean isFlywheelSpinning() {
-    return getFlywheelRPM() > TurretConstants.kFlywheelMinSpinningRPM;
-  }
-
-  /**
-   * Sets both motors to brake or coast mode
-   * @param brake True for brake, false for coast
-   */
-  private void setMotorBrake(boolean brake) {
-    NeutralModeValue mode = brake ? NeutralModeValue.Brake : NeutralModeValue.Coast;
-    turretMotor.setNeutralMode(mode);
-
-    // Flywheel always stays in coast mode
-    flywheelLeader.setNeutralMode(NeutralModeValue.Coast);
-    flywheelFollower.setNeutralMode(NeutralModeValue.Coast);
+  public Pose2d getPose(Pose2d robotPose) {
+    return new Pose2d(
+      robotPose.getTranslation().plus(TurretConstants.kRobotToTurret.rotateBy(robotPose.getRotation())),
+      robotPose.getRotation()
+    );
   }
 
   // ---------------------------------------------------------------------------------------
   // Public triggers that expose private state
   // ---------------------------------------------------------------------------------------
+  
+  public final Trigger isAtTargetTrigger = new Trigger(this::isAtAngle)
+    .debounce(0.1, Debouncer.DebounceType.kRising);
 
-  public final Trigger isTurretAtTargetTrigger    = new Trigger(this::isTurretAtTarget);
-  public final Trigger isFlywheelAtTargetTrigger  = new Trigger(this::isFlywheelAtTarget);
-  public final Trigger isFlywheelSpinningTrigger  = new Trigger(this::isFlywheelSpinning);
+  public final Trigger isAtUpperLimitTrigger = new Trigger(() -> isAtAngle(TurretConstants.kMaxAngleDegrees))
+    .debounce(0.1, Debouncer.DebounceType.kRising);
 
-  /** True when both turret is aimed and flywheel is at speed - ready to shoot */
-  public final Trigger isReadyToShootTrigger = isTurretAtTargetTrigger.and(isFlywheelAtTargetTrigger);
+  public final Trigger isAtLowerLimitTrigger = new Trigger(() -> isAtAngle(TurretConstants.kMinAngleDegrees))
+    .debounce(0.1, Debouncer.DebounceType.kRising);
 
   // ----------------------------------------------------------------------------------------
   // Public methods to run at different phases of the match
@@ -383,9 +437,6 @@ public class TurretSubsystem extends SubsystemBase {
    * Initializes the turret at the start of the autonomous phase.
    */
   public void autonomousInit() {
-    setMotorBrake(true);
-    setTurretAngle(0);
-    stopFlywheel();
     Utils.logInfo("Turret subsystem initialized for autonomous");
   }
 
@@ -393,8 +444,6 @@ public class TurretSubsystem extends SubsystemBase {
    * Initializes the turret at the start of the teleop phase.
    */
   public void teleopInit() {
-    setMotorBrake(true);
-    stopFlywheel();
     Utils.logInfo("Turret subsystem initialized for teleop");
   }
 
@@ -402,8 +451,6 @@ public class TurretSubsystem extends SubsystemBase {
    * Initializes the turret for post match (disabled) state.
    */
   public void postMatch() {
-    setMotorBrake(false);
-    stopFlywheel();
     Utils.logInfo("Turret subsystem initialized for post match");
   }
 
@@ -411,20 +458,12 @@ public class TurretSubsystem extends SubsystemBase {
   // SysId Command Factories
   // ----------------------------------------------------------------------------------------
 
-  public Command turretSysIdQuasistatic(SysIdRoutine.Direction direction) {
+  public Command sysIdQuasistatic(SysIdRoutine.Direction direction) {
     return turretSysIdRoutine.quasistatic(direction);
   }
 
-  public Command turretSysIdDynamic(SysIdRoutine.Direction direction) {
+  public Command sysIdDynamic(SysIdRoutine.Direction direction) {
     return turretSysIdRoutine.dynamic(direction);
-  }
-
-  public Command flywheelSysIdQuasistatic(SysIdRoutine.Direction direction) {
-    return flywheelSysIdRoutine.quasistatic(direction);
-  }
-
-  public Command flywheelSysIdDynamic(SysIdRoutine.Direction direction) {
-    return flywheelSysIdRoutine.dynamic(direction);
   }
 
   // ----------------------------------------------------------------------------------------
@@ -436,8 +475,29 @@ public class TurretSubsystem extends SubsystemBase {
    * @param angleDegrees The desired robot-relative angle in degrees
    * @return Command to rotate to the given angle
    */
-  public Command aimAtAngleCommand(double angleDegrees) {
-    return runOnce(() -> setTurretAngle(angleDegrees));
+  public Command setAngleCommand(double angleDegrees) {
+    return run(() -> setAngle(angleDegrees))
+      .until(this::isAtAngle)
+      .withTimeout(TurretConstants.kMoveTimeoutSeconds)
+      .finallyDo(this::stop)
+      .withName("Turret_setAngle");
+  }
+
+  /**
+   * Command to continuously rotate the turret to track a field-relative angle,
+   * accounting for the robot's current heading.
+   * @param fieldAngleDegreesSupplier Supplier for the desired field-relative angle
+   * @param robotPoseSupplier Supplier for the robot's current field pose
+   * @return Command to continuously track the field-relative angle
+   */
+  public Command aimAtFieldAngleCommand(
+    DoubleSupplier fieldAngleDegreesSupplier,
+    Supplier<Pose2d> robotPoseSupplier
+  ) {
+    return aimAtFieldAngleCommand(
+      fieldAngleDegreesSupplier,
+      () -> robotPoseSupplier.get().getRotation().getDegrees()
+    );
   }
 
   /**
@@ -452,106 +512,101 @@ public class TurretSubsystem extends SubsystemBase {
     DoubleSupplier robotHeadingDegreesSupplier
   ) {
     return run(() -> {
-      double turretAngle = normalizeAngleDegrees(
+      double turretAngle = Utils.normalizeAngleDegrees(
         fieldAngleDegreesSupplier.getAsDouble() - robotHeadingDegreesSupplier.getAsDouble()
       );
-      setTurretAngle(turretAngle);
-    });
+      setAngle(turretAngle);
+    })
+    .withName("Turret_AimAtFieldAngle");
   }
 
   /**
-   * Command to continuously rotate the turret to face a target pose on the field.
-   * @param robotPoseSupplier Supplier for the robot's current field pose
+   * Command to continuously aim the turret at a target pose on the field.
+   * @param turretPoseSupplier Supplier for the turret's current field pose
    * @param targetPoseSupplier Supplier for the field-relative target pose to face
    * @return Command to continuously aim at the target pose
    */
   public Command aimAtPoseCommand(
-    Supplier<Pose2d> robotPoseSupplier,
+    Supplier<Pose2d> turretPoseSupplier,
     Supplier<Pose2d> targetPoseSupplier
   ) {
-    return run(() -> {
-      Pose2d robotPose = robotPoseSupplier.get();
-      Pose2d targetPose = targetPoseSupplier.get();
+    return aimAtPoseCommand(turretPoseSupplier, targetPoseSupplier, null);
+  }
 
-      if (robotPose == null || targetPose == null) {
+  /**
+   * Command to continuously aim the turret at a target pose on the field 
+   * and compensate for the robot's movement while doing so.
+   * @param turretPoseSupplier Supplier for the turret's current field pose
+   * @param targetPoseSupplier Supplier for the field-relative target pose to face
+   * @param fieldSpeedsSupplier Supplier for the robot's current field-relative chassis speeds
+   * @return Command to continuously aim at the target pose
+   */
+  public Command aimAtPoseCommand(
+    Supplier<Pose2d> turretPoseSupplier,
+    Supplier<Pose2d> targetPoseSupplier,
+    Supplier<ChassisSpeeds> fieldSpeedsSupplier
+  ) {
+    return run(() -> {
+      Pose2d turretPose = turretPoseSupplier == null ? null : turretPoseSupplier.get();
+      Pose2d targetPose = targetPoseSupplier == null ? null : targetPoseSupplier.get();
+      ChassisSpeeds fieldSpeeds = fieldSpeedsSupplier == null ? null : fieldSpeedsSupplier.get();
+
+      // If any input pose is null, we can't calculate the angle, so stop the turret and exit early
+      if (turretPose == null || targetPose == null) {
+        stop();
         return;
       }
 
-      double dx = targetPose.getX() - robotPose.getX();
-      double dy = targetPose.getY() - robotPose.getY();
+      // Same solution the flywheel uses, so aim and RPM always agree
+      ShotCalculator.Solution shot = ShotCalculator.solve(turretPose, targetPose.getTranslation(), fieldSpeeds);
+
+      // Angle to the VIRTUAL target in field coordinates, converted to robot-relative
+      double dx = shot.virtualTarget().getX() - turretPose.getX();
+      double dy = shot.virtualTarget().getY() - turretPose.getY();
       double fieldAngleDegrees = Units.radiansToDegrees(Math.atan2(dy, dx));
-      double turretAngle = normalizeAngleDegrees(fieldAngleDegrees - robotPose.getRotation().getDegrees());
-      setTurretAngle(turretAngle);
-    });
+      double turretAngle = fieldAngleDegrees - turretPose.getRotation().getDegrees();
+
+      // Command the turret to the calculated angle
+      setAngle(turretAngle);
+    })
+    .withName("Turret_AimAtPose");
   }
 
   /**
-   * Command to spin the flywheel to a target velocity and wait until it is at speed.
-   * @param rpm Target velocity in RPM
-   * @return Command to spin up the flywheel
+   * Command to zero the turret encoder at its current position. Only run this while the
+   * turret is physically at its home position (pit use, disabled only).
+   * @return Command that resets the encoder
    */
-  public Command spinUpCommand(double rpm) {
-    return runOnce(() -> setFlywheelRPM(rpm))
-      .andThen(Commands.waitUntil(this::isFlywheelAtTarget));
+  public Command setHomePositionCommand() {
+    return runOnce(this::resetEncoder)
+      .ignoringDisable(true)
+      .withName("Turret_SetHomePosition");
   }
 
   /**
-   * Command to spin the flywheel to a target velocity without waiting.
-   * Useful when pre-spinning during aiming.
-   * @param rpm Target velocity in RPM
-   * @return Command to set flywheel velocity
-   */
-  public Command setFlywheelRPMCommand(double rpm) {
-    return runOnce(() -> setFlywheelRPM(rpm));
-  }
-
-  /**
-   * Command to stop the flywheel.
-   * @return Command to stop the flywheel
-   */
-  public Command stopFlywheelCommand() {
-    return runOnce(this::stopFlywheel);
-  }
-
-  /**
-   * Command to aim at a target pose and spin up the flywheel simultaneously,
-   * then signal ready when both are on target.
-   * This is the primary shoot preparation command.
-   * @param robotPoseSupplier Supplier for the robot's current field pose
-   * @param targetPoseSupplier Supplier for the field-relative target pose
-   * @param rpm Target flywheel velocity in RPM
-   * @return Command that aims and spins up in parallel
-   */
-  public Command prepareToShootCommand(
-    Supplier<Pose2d> robotPoseSupplier,
-    Supplier<Pose2d> targetPoseSupplier,
-    double rpm
-  ) {
-    return Commands.parallel(
-      aimAtPoseCommand(robotPoseSupplier, targetPoseSupplier),
-      setFlywheelRPMCommand(rpm)
-    );
-  }
-
-  /**
-   * Command to home the turret to 0 degrees and stop the flywheel.
-   * @return Command to home the turret
-   */
-  public Command homeCommand() {
-    return runOnce(() -> {
-      setTurretAngle(0);
-      stopFlywheel();
-    }).andThen(Commands.waitUntil(this::isTurretAtTarget));
-  }
-
-  /**
-   * Command to stop both the turret and flywheel.
+   * Command to stop the turret.
    */
   public Command stopCommand() {
-    return runOnce(() -> {
-      stopTurret();
-      stopFlywheel();
-    });
+    return run(this::stop)
+      .withName("Turret_Stop");
+  }
+
+  /**
+   * Command to move the turret clockwise (open-loop control)
+   * @return Command that moves the turret clockwise
+   */
+  public Command clockwiseCommand() {
+    return run(() -> setVoltage(TurretConstants.kManualClockwiseVoltage))
+      .withName("Turret_ManualClockwise");
+  }
+
+  /**
+   * Command to move the turret counter-clockwise (open-loop control)
+   * @return Command that moves the turret counter-clockwise
+   */
+  public Command counterClockwiseCommand() {
+    return run(() -> setVoltage(TurretConstants.kManualCounterClockwiseVoltage))
+      .withName("Turret_ManualCounterClockwise");
   }
 
   // ----------------------------------------------------------------------------------------
@@ -560,26 +615,10 @@ public class TurretSubsystem extends SubsystemBase {
 
   @Override
   public void initSendable(SendableBuilder builder) {
-    // Turret telemetry
-    builder.addDoubleProperty("Turret Target Angle (deg)",  () -> Utils.showDouble(targetTurretAngleDegrees), null);
-    builder.addDoubleProperty("Turret Current Angle (deg)", () -> Utils.showDouble(getTurretAngleDegrees()), null);
-    builder.addDoubleProperty("Turret Angle Error (deg)",   () -> Utils.showDouble(normalizeAngleDegrees(targetTurretAngleDegrees - getTurretAngleDegrees())), null);
-    builder.addBooleanProperty("Turret At Target",          this::isTurretAtTarget, null);
-    builder.addDoubleProperty("Turret Voltage (V)",         () -> Utils.showDouble(turretMotor.getMotorVoltage().getValueAsDouble()), null);
-    builder.addDoubleProperty("Turret Current (A)",         () -> Utils.showDouble(turretMotor.getSupplyCurrent().getValueAsDouble()), null);
-    builder.addDoubleProperty("Turret Temp (C)",            () -> Utils.showDouble(turretMotor.getDeviceTemp().getValueAsDouble()), null);
-
-    // Flywheel telemetry
-    builder.addDoubleProperty("Flywheel Target RPM",        () -> Utils.showDouble(targetFlywheelRPM), null);
-    builder.addDoubleProperty("Flywheel Current RPM",       () -> Utils.showDouble(getFlywheelRPM()), null);
-    builder.addDoubleProperty("Flywheel RPM Error",         () -> Utils.showDouble(targetFlywheelRPM - getFlywheelRPM()), null);
-    builder.addBooleanProperty("Flywheel At Target",        this::isFlywheelAtTarget, null);
-    builder.addBooleanProperty("Flywheel Spinning",         this::isFlywheelSpinning, null);
-    builder.addBooleanProperty("Ready To Shoot",            () -> isReadyToShootTrigger.getAsBoolean(), null);
-    builder.addDoubleProperty("Flywheel Voltage (V)",       () -> Utils.showDouble(flywheelLeader.getMotorVoltage().getValueAsDouble()), null);
-    builder.addDoubleProperty("Flywheel Current (A)",       () -> Utils.showDouble(flywheelLeader.getSupplyCurrent().getValueAsDouble()), null);
-    builder.addDoubleProperty("Flywheel Temp (C)",          () -> Utils.showDouble(flywheelLeader.getDeviceTemp().getValueAsDouble()), null);
-    builder.addDoubleProperty("Follower Current (A)",       () -> Utils.showDouble(flywheelFollower.getSupplyCurrent().getValueAsDouble()), null);
-    builder.addDoubleProperty("Follower Temp (C)",          () -> Utils.showDouble(flywheelFollower.getDeviceTemp().getValueAsDouble()), null);
+    super.initSendable(builder);
+    builder.addDoubleProperty("Target Angle (deg)",  () -> Utils.showDouble(targetAngleDegrees), null);
+    builder.addDoubleProperty("Current Angle (deg)", () -> Utils.showDouble(getAngleDegrees()), null);
+    builder.addDoubleProperty("Current (A)",         () -> Utils.showDouble(turretMotor.getSupplyCurrent().getValueAsDouble()), null);
+    builder.addDoubleProperty("Temp (C)",            () -> Utils.showDouble(turretMotor.getDeviceTemp().getValueAsDouble()), null);
   }
 }

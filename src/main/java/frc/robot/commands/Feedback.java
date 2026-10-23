@@ -26,81 +26,45 @@ public class Feedback {
   }
 
   /**
-   * Give success feedback: flashes green for 1 second and does a double rumble
+   * Success feedback: flashes green briefly and does a double rumble
    * @return Command to run the success feedback routine
    */
   public Command successCommand() {
-    return successCommand(1.0);
-  }
-
-  /**
-   * Give success feedback: flashes green for a specified duration and does a double rumble
-   * @param timeoutSeconds Duration in seconds for the LED feedback
-   * @return Command to run the success feedback routine
-   */
-  public Command successCommand(double timeoutSeconds) {
     return Commands.parallel(
-      ledSubsystem.successCommand().withTimeout(timeoutSeconds),
+      ledSubsystem.successCommand(),
       rumbleSubsystem.doubleCommand()
     ).withName("Feedback_Success");
   }
 
   /**
-   * Give info feedback: flashes blue for 1 second and does a quick rumble
+   * Info feedback: flashes cyan briefly and does a quick rumble
    * @return Command to run the info feedback routine
    */
   public Command infoCommand() {
-    return infoCommand(1.0);
-  }
-
-  /**
-   * Give info feedback: flashes blue for a specified duration and does a quick rumble
-   * @param timeoutSeconds Duration in seconds for the LED feedback
-   * @return Command to run the info feedback routine
-   */
-  public Command infoCommand(double timeoutSeconds) {
     return Commands.parallel(
-      ledSubsystem.infoCommand().withTimeout(timeoutSeconds),
+      ledSubsystem.infoCommand(),
       rumbleSubsystem.quickCommand()
     ).withName("Feedback_Info");
   }
 
   /**
-   * Give warning feedback: flashes yellow for 1 second and does a medium rumble
+   * Warning feedback: flashes gold briefly and does a medium rumble
    * @return Command to run the warning feedback routine
    */
   public Command warningCommand() {
-    return warningCommand(1.0);
-  }
-
-  /**
-   * Give warning feedback: flashes yellow for a specified duration and does a medium rumble
-   * @param timeoutSeconds Duration in seconds for the LED feedback
-   * @return Command to run the warning feedback routine
-   */
-  public Command warningCommand(double timeoutSeconds) {
     return Commands.parallel(
-      ledSubsystem.warningCommand().withTimeout(timeoutSeconds),
+      ledSubsystem.warningCommand(),
       rumbleSubsystem.mediumCommand()
     ).withName("Feedback_Warning");
   }
 
   /**
-   * Give error feedback: flashes red for 1 second and does a strong rumble
+   * Hardware error feedback: locks magenta on the LED strip and does a strong rumble
    * @return Command to run the error feedback routine
    */
   public Command errorCommand() {
-    return errorCommand(1.0);
-  }
-
-  /**
-   * Give error feedback: flashes red for a specified duration and does a strong rumble
-   * @param timeoutSeconds Duration in seconds for the LED feedback
-   * @return Command to run the error feedback routine
-   */
-  public Command errorCommand(double timeoutSeconds) {
     return Commands.parallel(
-      ledSubsystem.errorCommand().withTimeout(timeoutSeconds),
+      ledSubsystem.errorCommand(),
       rumbleSubsystem.strongCommand()
     ).withName("Feedback_Error");
   }

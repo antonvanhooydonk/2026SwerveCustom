@@ -42,7 +42,7 @@ import frc.robot.util.Utils;
  * Represents a single swerve drive module with a Kraken x60 drive motor
  * and a Neo steering motor with a ThriftyBot absolute encoder attached.
  */
-public class SwerveModule implements Sendable {
+public class DriveModule implements Sendable {
   // Hardware
   private final TalonFX driveMotor;
   private final SparkMax steerMotor;
@@ -85,7 +85,7 @@ public class SwerveModule implements Sendable {
    * @param absoluteEncoderOffsetRadians Offset angle in radians for the absolute encoder
    * @param absoluteEncoderInverted Indicates that the absolute encoder is inverted
    */
-  public SwerveModule(
+  public DriveModule(
     String moduleName,
     int driveMotorID,
     int steerMotorID,
@@ -178,12 +178,12 @@ public class SwerveModule implements Sendable {
 
     // Velocity PID (runs on onboard motor controller, tunable in constants)
     driveConfig.Slot0
-      .withKP(SwerveConstants.kDriveKP)      // Proportional gain
-      .withKI(SwerveConstants.kDriveKI)      // Integral gain
-      .withKD(SwerveConstants.kDriveKD)      // Derivative gain
-      .withKS(SwerveConstants.kDriveKS)      // Static feedforward
-      .withKV(SwerveConstants.kDriveKV)      // Velocity feedforward
-      .withKA(SwerveConstants.kDriveKA);     // Acceleration feedforward
+      .withKP(DriveConstants.kDriveKP)      // Proportional gain
+      .withKI(DriveConstants.kDriveKI)      // Integral gain
+      .withKD(DriveConstants.kDriveKD)      // Derivative gain
+      .withKS(DriveConstants.kDriveKS)      // Static feedforward
+      .withKV(DriveConstants.kDriveKV)      // Velocity feedforward
+      .withKA(DriveConstants.kDriveKA);     // Acceleration feedforward
     
     // Apply the configuration to the motor
     applyTalonFXConfig(driveConfig);
@@ -218,16 +218,16 @@ public class SwerveModule implements Sendable {
       .outputRange(-1.0, 1.0)
       .positionWrappingEnabled(true)      
       .positionWrappingInputRange(
-        -SwerveConstants.kSteerGearRatio / 2.0, 
-         SwerveConstants.kSteerGearRatio / 2.0
+        -DriveConstants.kSteerGearRatio / 2.0, 
+         DriveConstants.kSteerGearRatio / 2.0
       )
-      .p(SwerveConstants.kSteerKP)
-      .i(SwerveConstants.kSteerKI)
-      .d(SwerveConstants.kSteerKD)
+      .p(DriveConstants.kSteerKP)
+      .i(DriveConstants.kSteerKI)
+      .d(DriveConstants.kSteerKD)
       .feedForward
-        .kS(SwerveConstants.kSteerKS)
-        .kV(SwerveConstants.kSteerKV)
-        .kA(SwerveConstants.kSteerKA);
+        .kS(DriveConstants.kSteerKS)
+        .kV(DriveConstants.kSteerKV)
+        .kA(DriveConstants.kSteerKA);
 
     // Optimize CAN status frames for reduced lag
     steerConfig.signals
@@ -272,23 +272,23 @@ public class SwerveModule implements Sendable {
    */
   public void periodic() {
     // Get the current steer angle once each periodic (shared by state and position)
-    Rotation2d currentAngle = new Rotation2d(Utils.normalizeAngle(
-      Conversions.rotationsToRadians(steerEncoder.getPosition(), SwerveConstants.kSteerGearRatio)
+    Rotation2d currentAngle = new Rotation2d(Utils.normalizeAngleRadians(
+      Conversions.rotationsToRadians(steerEncoder.getPosition(), DriveConstants.kSteerGearRatio)
     ));
  
     // Update cached state (avoids newing SwerveModuleState each time)
-    cachedState.speedMetersPerSecond = Conversions.motorRPSToWheelMPS(
+    cachedState.speedMetersPerSecond = Conversions.rotationsToMeters(
       driveMotor.getVelocity().getValueAsDouble(), 
-      SwerveConstants.kDriveGearRatio, 
-      SwerveConstants.kWheelCircumference
+      DriveConstants.kDriveGearRatio, 
+      DriveConstants.kWheelCircumference
     );
     cachedState.angle = currentAngle;
 
     // Update cached position (avoids newing SwerveModuleState each time)
-    cachedPosition.distanceMeters = Conversions.motorRotationsToWheelMeters(
+    cachedPosition.distanceMeters = Conversions.rotationsToMeters(
       driveMotor.getPosition().getValueAsDouble(),
-      SwerveConstants.kDriveGearRatio,
-      SwerveConstants.kWheelCircumference
+      DriveConstants.kDriveGearRatio,
+      DriveConstants.kWheelCircumference
     );
     cachedPosition.angle = currentAngle;
 
@@ -308,7 +308,7 @@ public class SwerveModule implements Sendable {
     // Set the relative encoder to match the absolute encoder
     steerEncoder.setPosition(Conversions.radiansToRotations(
       absoluteEncoder.getAngleRadians(), 
-      SwerveConstants.kSteerGearRatio
+      DriveConstants.kSteerGearRatio
     ));
   }
 
@@ -319,7 +319,7 @@ public class SwerveModule implements Sendable {
   public void resetSteerEncoders() {
     steerEncoder.setPosition(Conversions.radiansToRotations(
       absoluteEncoder.getAngleRadians(), 
-      SwerveConstants.kSteerGearRatio
+      DriveConstants.kSteerGearRatio
     ));
   }
 
@@ -391,21 +391,21 @@ public class SwerveModule implements Sendable {
     // Clamp the velocity to a safe range
     double clamped = MathUtil.clamp(
       velocityMPS, 
-      -SwerveConstants.kMaxSpeedMetersPerSecond, 
-      SwerveConstants.kMaxSpeedMetersPerSecond
+      -DriveConstants.kMaxSpeedMetersPerSecond, 
+      DriveConstants.kMaxSpeedMetersPerSecond
     );
 
     // Convert velocity (m/s) to motor rotations per second (RPS)
-    double velocityRPS = Conversions.wheelMPSToMotorRPS(
+    double velocityRPS = Conversions.metersToRotations(
       clamped, 
-      SwerveConstants.kDriveGearRatio, 
-      SwerveConstants.kWheelCircumference
+      DriveConstants.kDriveGearRatio, 
+      DriveConstants.kWheelCircumference
     );
 
     // Convert force (N) to voltage
     double feedforwardVolts = 0.0;
     if (feedforward != null) {
-      double volts = feedforward.in(Newtons) * SwerveConstants.kDriveVoltsPerNewton;
+      double volts = feedforward.in(Newtons) * DriveConstants.kDriveVoltsPerNewton;
       if (Double.isFinite(volts)) {
         feedforwardVolts = MathUtil.clamp(volts, -12.0, 12.0);
       }
@@ -428,8 +428,8 @@ public class SwerveModule implements Sendable {
     
     // Convert the angle to motor rotations
     double rotations = Conversions.radiansToRotations(
-      Utils.normalizeAngle(angleRadians), 
-      SwerveConstants.kSteerGearRatio
+      Utils.normalizeAngleRadians(angleRadians), 
+      DriveConstants.kSteerGearRatio
     );
 
     // Command the steering motor to the desired angle

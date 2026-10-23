@@ -6,6 +6,8 @@ package frc.robot;
 
 import edu.wpi.first.apriltag.AprilTagFieldLayout;
 import edu.wpi.first.apriltag.AprilTagFields;
+import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.util.Units;
 
@@ -19,46 +21,76 @@ import edu.wpi.first.math.util.Units;
  */
 public final class Constants {
   /**
-   * Analog IO contants
+   * Tuning constants - Turn dashboard tuning on/off for each subsystem.  
+   *                    SET TO FALSE AT COMPETITIONS.
    */
-  public static final class AnalogConstants {
-    // Swerve module absolute encoder IDs
-    public static final int kFrontLeftAbsEncoderID  = 0;
-    public static final int kFrontRightAbsEncoderID = 1;
-    public static final int kBackLeftAbsEncoderID   = 3;
-    public static final int kBackRightAbsEncoderID  = 2;
+  public static final class TuningConstants {
+    public static final boolean kTuneClimber = true;
+    public static final boolean kTuneDrive = true;
+    public static final boolean kTuneElevator = true;
+    public static final boolean kTuneFeeder = true;
+    public static final boolean kTuneFlywheel = true;
+    public static final boolean kTuneIntake = true;
+    public static final boolean kTuneTurret = true;    
   }
 
   /**
-   * CAN bus IO contants
+   * Analog IO constants
+   */
+  public static final class AnalogConstants {
+    public static final int kFrontLeftAbsEncoderID = 0;
+    public static final int kFrontRightAbsEncoderID = 1;
+    public static final int kBackLeftAbsEncoderID = 3;
+    public static final int kBackRightAbsEncoderID = 2;
+    
+    public static final int kArmMotorID = 15;
+  }
+
+  /**
+   * CAN bus IO constants
    */
   public static final class CANConstants {
-    // NavX 3 gyro (recommended to be on ID 0 for better stability)
-    public static final int kGyroID             = 0;
+    // Swerve module drive & steer motor IDs are defined in /deploy/swerve/YYYY/modules/*.json
+    // Ensure that CAN constants defined here do not conflict with file definitions
 
-    // Swerve module drive motor IDs
-    public static final int kFrontLeftDriveID   = 11;
-    public static final int kFrontRightDriveID  = 12;
-    public static final int kBackLeftDriveID    = 14;
-    public static final int kBackRightDriveID   = 13;
-  
-    // Swerve module steer motor IDs
-    public static final int kFrontLeftSteerID   = 2;
-    public static final int kFrontRightSteerID  = 8;
-    public static final int kBackLeftSteerID    = 4;
-    public static final int kBackRightSteerID   = 6;
+    // Navx 3 ID
+    // SPI = 0
+
+    // Reserved for swerve modules
+    // FL: encoder = A0, steer = CAN2, drive = CAN11
+    // FR: encoder = A1, steer = CAN8, drive = CAN12
+    // BL: encoder = A3, steer = CAN4, drive = CAN14
+    // BR: encoder = A2, steer = CAN6, drive = CAN13
+    public static final int kFrontLeftDriveID = 11;
+    public static final int kFrontLeftSteerID = 2;
+    public static final int kFrontRightDriveID = 12;
+    public static final int kFrontRightSteerID = 8;
+    public static final int kBackLeftDriveID = 14;
+    public static final int kBackLeftSteerID = 4;
+    public static final int kBackRightDriveID = 13;
+    public static final int kBackRightSteerID = 6;
+
+    // Arm motor ID
+    public static final int kArmMotorID = 15;
 
     // Climber motor ID
-    public static final int kClimberMotorID = 15;
+    public static final int kClimberMotorID = 16;
 
     // Elevator motor IDs
-    public static final int kElevatorLeaderMotorID = 7;
-    public static final int kElevatorFollowerMotorID = 9;
+    public static final int kElevatorLeaderMotorID = 17;
+    public static final int kElevatorFollowerMotorID = 18;
+
+    // Feeder motor ID
+    public static final int kFeederMotorID = 24;
+
+    // Intake motor & solenoid IDs
+    public static final int kIntakeRollerMotorID = 19;
+    public static final int kIntakeSolenoidMotorID = 20;
 
     // Turret & flywheel motor IDs
-    public static final int kTurretMotorID = 16;
-    public static final int kFlywheelLeaderMotorID = 16;
-    public static final int kFlywheelFollowerMotorID = 16;
+    public static final int kTurretMotorID = 21;
+    public static final int kFlywheelLeaderMotorID = 22;
+    public static final int kFlywheelFollowerMotorID = 23;
   }
   
   /**
@@ -80,7 +112,18 @@ public final class Constants {
     public static final AprilTagFieldLayout kFieldLayout = AprilTagFieldLayout.loadField(AprilTagFields.k2026RebuiltWelded);
     public static final double kFieldLengthMeters = Units.inchesToMeters(651.22); // meters
     public static final double kFieldWidthMeters = Units.inchesToMeters(317.69); // meters
-    public static final Translation2d kBlueHubCenter = new Translation2d(Units.inchesToMeters(158.84), Units.inchesToMeters(182.11));
-    public static final Translation2d kRedHubCenter = new Translation2d(Units.inchesToMeters(158.84), Units.inchesToMeters(469.11));
+    
+    // Field frame: origin at the blue alliance corner, +X toward the red alliance wall, +Y across the 
+    // field width. The hubs sit 182.11 in from their own alliance wall on the field centerline (Y = width / 2).
+    // Red is derived by mirroring X so the two can never drift out of sync.
+    // VERIFY against the hub AprilTag poses in kFieldLayout before your first event.
+    public static final Translation2d kBlueHubCenter = new Translation2d(Units.inchesToMeters(182.11), kFieldWidthMeters / 2.0);
+    public static final Translation2d kRedHubCenter = new Translation2d(kFieldLengthMeters - kBlueHubCenter.getX(), kFieldWidthMeters / 2.0);
+    public static final Pose2d kBlueHubPose = new Pose2d(kBlueHubCenter, Rotation2d.kZero);
+    public static final Pose2d kRedHubPose = new Pose2d(kRedHubCenter, Rotation2d.k180deg);
+
+    // TODO: placeholders - these are currently the hub centers. Replace with the real pass targets.
+    public static final Pose2d kBluePassPose = new Pose2d(kBlueHubCenter, Rotation2d.kZero);
+    public static final Pose2d kRedPassPose = new Pose2d(kRedHubCenter, Rotation2d.k180deg);
   }
 }

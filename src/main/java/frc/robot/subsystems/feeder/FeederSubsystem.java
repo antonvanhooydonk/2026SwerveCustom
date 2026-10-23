@@ -1,0 +1,354 @@
+// Copyright (c) FIRST and other WPILib contributors.
+// Open Source Software; you can modify and/or share it under the terms of
+// the WPILib BSD license file in the root directory of this project.
+
+package frc.robot.subsystems.feeder;
+
+import static edu.wpi.first.units.Units.Rotations;
+import static edu.wpi.first.units.Units.RotationsPerSecond;
+import static edu.wpi.first.units.Units.Volts;
+
+import java.util.Arrays;
+
+import com.ctre.phoenix6.configs.TalonFXConfiguration;
+import com.ctre.phoenix6.controls.VelocityVoltage;
+import com.ctre.phoenix6.controls.VoltageOut;
+import com.ctre.phoenix6.hardware.TalonFX;
+import com.ctre.phoenix6.signals.InvertedValue;
+import com.ctre.phoenix6.signals.NeutralModeValue;
+
+import edu.wpi.first.math.MathUtil;
+import edu.wpi.first.math.filter.Debouncer;
+import edu.wpi.first.util.sendable.SendableBuilder;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
+import edu.wpi.first.wpilibj2.command.Command;
+import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import edu.wpi.first.wpilibj2.command.button.Trigger;
+import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
+
+import frc.robot.Constants.CANConstants;
+import frc.robot.Constants.TuningConstants;
+import frc.robot.util.TalonFXFactory;
+import frc.robot.util.Utils;
+
+/**
+ * Feeder subsystem using a Kraken X60 (TalonFX) motor. 
+ *
+ * Feeder tuning process:
+ * 1. Run feeder SysId to characterize kS, kV, kA
+ * 2. Start with feedforward only (kP = 0)
+ * 3. Add minimal kP if steady-state error remains (usually 0.05 - 0.2)
+ * 4. Avoid kI and kD unless absolutely necessary
+ */
+public class FeederSubsystem extends SubsystemBase {
+  // Feeder hardware
+  private final TalonFX feederMotor;
+
+  // Feeder control request
+  private final VelocityVoltage feederVelocityRequest;
+
+  // Cached target (for telemetry)
+  private double targetRPM = 0.0;
+
+  // SysId routine
+  private final SysIdRoutine feederSysIdRoutine;
+
+  // Tuning constants from the SmartDashboard (for real-time tuning)
+  private double[] lastTuning = new double[0];
+
+  /**
+   * Creates a new FeederSubsystem
+   */
+  public FeederSubsystem() {
+    // Create the feeder motor
+    feederMotor = TalonFXFactory.createMotor(CANConstants.kFeederMotorID, getMotorConfig());
+
+    // Initialize control request
+    feederVelocityRequest = new VelocityVoltage(0).withSlot(0);
+
+    // Initialize SysId routine (leader motor only)
+    feederSysIdRoutine = new SysIdRoutine(
+      new SysIdRoutine.Config(null, null, null, null),
+      new SysIdRoutine.Mechanism(
+        volts -> feederMotor.setControl(new VoltageOut(volts.in(Volts))),
+        log -> log.motor("feeder")
+          .voltage(Volts.of(feederMotor.getMotorVoltage().getValueAsDouble()))
+          .angularPosition(Rotations.of(feederMotor.getPosition().getValueAsDouble()))
+          .angularVelocity(RotationsPerSecond.of(feederMotor.getVelocity().getValueAsDouble())),
+        this
+      )
+    );
+
+    // set the default command for this subsystem
+    setDefaultCommand(stopCommand());
+
+    // Add data to dashboard
+    SmartDashboard.putData("Feeder", this);
+
+    // Initialize tuning constants on the SmartDashboard for real-time tuning
+    initTuningDashboard();
+
+    // Output initialization progress
+    Utils.logInfo("Feeder subsystem initialized");
+  }
+
+  @Override
+  public void periodic() {
+    getTuningFromDashboard();
+  }
+
+  /**
+   * Initialize tuning constants on the SmartDashboard for real-time tuning.
+   * This method is called once during subsystem initialization.
+   */
+  private void initTuningDashboard() {
+    if (TuningConstants.kTuneFeeder) {
+      SmartDashboard.putNumber("Feeder/P", FeederConstants.kP);
+      SmartDashboard.putNumber("Feeder/I", FeederConstants.kI);
+      SmartDashboard.putNumber("Feeder/D", FeederConstants.kD);
+      SmartDashboard.putNumber("Feeder/kS", FeederConstants.kS);
+      SmartDashboard.putNumber("Feeder/kV", FeederConstants.kV);
+      SmartDashboard.putNumber("Feeder/kA", FeederConstants.kA);
+    }
+  }
+
+  /**
+   * Read tuning constants from SmartDashboard and apply them to the climber motor.
+   * This allows for real-time tuning of PIDF constants without redeploying code.
+   */
+  private void getTuningFromDashboard() {
+    if (!TuningConstants.kTuneFeeder) return;
+
+    // Get the current tuning values from the SmartDashboard
+    double[] current = {
+      SmartDashboard.getNumber("Feeder/P", FeederConstants.kP),
+      SmartDashboard.getNumber("Feeder/I", FeederConstants.kI),
+      SmartDashboard.getNumber("Feeder/D", FeederConstants.kD),
+      SmartDashboard.getNumber("Feeder/kS", FeederConstants.kS),
+      SmartDashboard.getNumber("Feeder/kV", FeederConstants.kV),
+      SmartDashboard.getNumber("Feeder/kA", FeederConstants.kA),
+    };
+    if (Arrays.equals(current, lastTuning)) return;
+
+    // Cache the current tuning values to avoid unnecessary updates
+    lastTuning = current;
+
+    // Update the controller with the new constants
+    TalonFXConfiguration tuneConfig = new TalonFXConfiguration();
+    tuneConfig.Slot0
+      .withKP(current[0])
+      .withKI(current[1])
+      .withKD(current[2])
+      .withKS(current[3])
+      .withKV(current[4])
+      .withKA(current[5]);
+    
+    TalonFXFactory.applyConfig(feederMotor, tuneConfig);
+  }
+  
+  /**
+   * Configure the subsystem motors with the appropriate settings
+   */
+  private TalonFXConfiguration getMotorConfig() {
+    TalonFXConfiguration config = new TalonFXConfiguration();
+
+    // Set basic motor configuration parameters
+    config.MotorOutput
+      .withNeutralMode(NeutralModeValue.Brake)
+      .withInverted(InvertedValue.CounterClockwise_Positive)
+      .withDutyCycleNeutralDeadband(0.001);
+
+    // Set current limits
+    config.CurrentLimits
+      .withSupplyCurrentLimitEnable(true)
+      .withSupplyCurrentLimit(40)
+      .withSupplyCurrentLowerLimit(30)
+      .withSupplyCurrentLowerTime(1.0)
+      .withStatorCurrentLimitEnable(true)
+      .withStatorCurrentLimit(60);
+
+    // Set voltage limits
+    config.Voltage
+      .withPeakForwardVoltage(12)
+      .withPeakReverseVoltage(-12)
+      .withSupplyVoltageTimeConstant(0.02);
+
+    // Set PID and feedforward gains
+    config.Slot0
+      .withKP(FeederConstants.kP)
+      .withKI(FeederConstants.kI)
+      .withKD(FeederConstants.kD)
+      .withKS(FeederConstants.kS)
+      .withKV(FeederConstants.kV)
+      .withKA(FeederConstants.kA);
+
+    // Return the motor configuration
+    return config;
+  }
+
+  // ----------------------------------------------------------------------------------------
+  // Private state methods
+  // ----------------------------------------------------------------------------------------
+
+  /**
+   * Sets the feeder to a target velocity in RPM
+   * @param rpm Target velocity in RPM
+   */
+  private void setRPM(double rpm) {
+    // Clamp target to valid range
+    targetRPM = MathUtil.clamp(
+      rpm, 
+      FeederConstants.kFeederMinRPM, 
+      FeederConstants.kFeederMaxRPM
+    );
+
+    // Set the feeder velocity (TalonFX velocity is in RPS, convert RPM to RPS)
+    feederMotor.setControl(feederVelocityRequest.withVelocity(targetRPM / 60.0));
+  }
+
+  /**
+   * Gets the current feeder velocity in RPM
+   * @return Current velocity in RPM
+   */
+  private double getRPM() {
+    // TalonFX velocity is in RPS, convert to RPM
+    return feederMotor.getVelocity().getValueAsDouble() * 60.0;
+  }
+
+  /**
+   * Stops the feeder
+   */
+  private void stop() {
+    targetRPM = 0.0;
+    feederMotor.stopMotor();
+  }
+
+  /**
+   * Check if feeder is at the current target RPM within tolerance
+   * @return true if within tolerance of the target RPM  
+   */
+  private boolean isAtTargetRPM() {
+    return Math.abs(targetRPM) > 0.0 && MathUtil.isNear(
+      targetRPM,
+      getRPM(),
+      FeederConstants.kFeederToleranceRPM
+    );
+  }
+
+  /**
+   * Gets whether the feeder is spinning (above a minimum threshold)
+   * @return True if spinning
+   */
+  private boolean isSpinning() {
+    return getRPM() > FeederConstants.kFeederMinSpinningRPM;
+  }
+
+  // ---------------------------------------------------------------------------------------
+  // Public triggers that expose private state
+  // ---------------------------------------------------------------------------------------
+
+  public final Trigger isFeederAtTargetTrigger = new Trigger(this::isAtTargetRPM)
+    .debounce(0.1, Debouncer.DebounceType.kRising);
+
+  public final Trigger isFeederSpinningTrigger = new Trigger(this::isSpinning)
+    .debounce(0.1, Debouncer.DebounceType.kRising);
+
+  // ----------------------------------------------------------------------------------------
+  // Public methods to run at different phases of the match
+  // ----------------------------------------------------------------------------------------
+
+  /**
+   * Initializes the shooter at the start of the autonomous phase.
+   */
+  public void autonomousInit() {
+    stop();
+    Utils.logInfo("Feeder subsystem initialized for autonomous");
+  }
+
+  /**
+   * Initializes the feeder at the start of the teleop phase.
+   */
+  public void teleopInit() {
+    stop();
+    Utils.logInfo("Feeder subsystem initialized for teleop");
+  }
+
+  /**
+   * Initializes the feeder for post match (disabled) state.
+   */
+  public void postMatch() {
+    stop();
+    Utils.logInfo("Feeder subsystem initialized for post match");
+  }
+
+  // ----------------------------------------------------------------------------------------
+  // SysId Command Factories
+  // ----------------------------------------------------------------------------------------
+
+  public Command sysIdQuasistatic(SysIdRoutine.Direction direction) {
+    return feederSysIdRoutine.quasistatic(direction);
+  }
+
+  public Command sysIdDynamic(SysIdRoutine.Direction direction) {
+    return feederSysIdRoutine.dynamic(direction);
+  }
+
+  // ----------------------------------------------------------------------------------------
+  // Public Command Factory Methods
+  // ----------------------------------------------------------------------------------------
+
+  /**
+   * Command to spin the feeder to a target velocity without waiting.
+   * Useful when pre-spinning during aiming.
+   * @param rpm Target velocity in RPM
+   * @return Command to set feeder velocity
+   */
+  public Command setRPMCommand(double rpm) {
+    return run(() -> setRPM(rpm))
+      .withName("Feeder_setRPM");
+  }
+
+  /**
+   * Command to feed fuel in the feeder.
+   * @return Command to set feeder velocity
+   */
+  public Command feedCommand() {
+    return run(() -> setRPM(FeederConstants.kFeedRPM))
+      .withName("Feeder_Feed");
+  }
+
+  /**
+   * Command to reverse the feeder.
+   * @return Command to set feeder velocity
+   */
+  public Command reverseCommand() {
+    return run(() -> setRPM(FeederConstants.kReverseRPM))
+      .withName("Feeder_Reverse");
+  }
+
+  /**
+   * Command to stop the feeder.
+   * @return Command to stop the feeder
+   */
+  public Command stopCommand() {
+    return run(this::stop)
+      .withName("Feeder_Stop");
+  }
+
+  // ----------------------------------------------------------------------------------------
+  // Sendable / Dashboard
+  // ----------------------------------------------------------------------------------------
+
+  @Override
+  public void initSendable(SendableBuilder builder) {
+    super.initSendable(builder);
+    builder.addDoubleProperty("Target RPM",   () -> Utils.showDouble(targetRPM), null);
+    builder.addDoubleProperty("Current RPM",  () -> Utils.showDouble(getRPM()), null);
+    builder.addDoubleProperty("RPM Error",    () -> Utils.showDouble(targetRPM - getRPM()), null);
+    builder.addBooleanProperty("At Target",   this::isAtTargetRPM, null);
+    builder.addBooleanProperty("Spinning",    this::isSpinning, null);
+    builder.addDoubleProperty("Voltage (V)",  () -> Utils.showDouble(feederMotor.getMotorVoltage().getValueAsDouble()), null);
+    builder.addDoubleProperty("Current (A)",  () -> Utils.showDouble(feederMotor.getSupplyCurrent().getValueAsDouble()), null);
+    builder.addDoubleProperty("Temp (C)",     () -> Utils.showDouble(feederMotor.getDeviceTemp().getValueAsDouble()), null);
+  }
+}

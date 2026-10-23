@@ -14,6 +14,7 @@ import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.system.plant.DCMotor;
 import edu.wpi.first.math.util.Units;
+
 import frc.robot.Constants.FieldConstants;
 import frc.robot.Robot;
 
@@ -25,7 +26,7 @@ import frc.robot.Robot;
  * It is advised to statically import this class (or one of its inner classes) wherever the
  * constants are needed, to reduce verbosity.
  */
-public final class SwerveConstants {
+public final class DriveConstants {
   // ------------------------------------------------------------
   // Maximum drive & turning speeds - adjust as necessary
   // ------------------------------------------------------------
@@ -181,7 +182,7 @@ public final class SwerveConstants {
   // 2. Start with feedforward only (kP = 0)
   // 3. Add minimal P gain if needed (usually 0.05 - 0.2)
   // 4. Avoid I and D unless absolutely necessary
-  public static final double kDriveKP = 0.075;  // 0.05 usually 0.05 - 0.2
+  public static final double kDriveKP = 0.075;  // 0.05 usually 0.05 - 0.2, YAGSL was 0.0020645
   public static final double kDriveKI = 0.0;
   public static final double kDriveKD = 0.0;
   public static final double kDriveKS = 0.06;   // Static friction usually 0.05 to 0.10
@@ -196,7 +197,7 @@ public final class SwerveConstants {
   // 2. Increase P until fast response without overshoot (typically 1.0 - 2.5)
   // 3. Add small D if oscillating (typically 0.01 - 0.1)
   // 4. Avoid I unless steady-state error (very rare in steering)
-  public static final double kSteerKP = 1.5;    // usually 1.0 - 2.5, increase up to 5 if mushy, Gemini recommends 3.5
+  public static final double kSteerKP = 1.5;    // usually 1.0 - 2.5, increase up to 5 if mushy, Gemini recommends 3.5, YAGSL was 0.01
   public static final double kSteerKI = 0.0;    // usually 0.0
   public static final double kSteerKD = 0.0;    // usually 0.0 - 0.10
   public static final double kSteerKS = 0.0;    // usually 0.0 - 0.10, Rev recommends 0 

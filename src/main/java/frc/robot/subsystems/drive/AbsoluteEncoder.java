@@ -87,7 +87,7 @@ public class AbsoluteEncoder implements Sendable {
       angle = -angle;
     }
     angle -= offsetRadians;
-    return Utils.normalizeAngle(angle);
+    return Utils.normalizeAngleRadians(angle);
   }
   
   /**
@@ -126,7 +126,7 @@ public class AbsoluteEncoder implements Sendable {
     if (inverted) { 
       angle = -angle;
     }
-    return Utils.normalizeAngle(angle);
+    return Utils.normalizeAngleRadians(angle);
   }
   
   /**

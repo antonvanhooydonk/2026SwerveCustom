@@ -4,6 +4,8 @@
 
 package frc.robot;
 
+import edu.wpi.first.wpilibj.DataLogManager;
+import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
@@ -13,6 +15,14 @@ public class Robot extends TimedRobot {
   private Command m_autonomousCommand;
 
   public Robot() {
+    // Start WPILib data logging (writes .wpilog to the roboRIO, or USB stick if present)
+    // Ensure a FAT32 USB stick is inserted into the roboRIO before booting to log to 
+    // USB instead of filling up the roboRIO's storage.
+    DataLogManager.start();
+
+    // Also log DriverStation control/joystick data and console output
+    DriverStation.startDataLog(DataLogManager.getLog());
+
     // Instantiate our RobotContainer. This will perform all our button bindings, 
     // and put our autonomous chooser on the dashboard.
     m_robotContainer = new RobotContainer();
@@ -28,13 +38,19 @@ public class Robot extends TimedRobot {
   }
 
   @Override
+  public void simulationPeriodic() {}
+
+  @Override
   public void disabledInit() {
     // Initialize for post match state
-    m_robotContainer.postMatch();
+    m_robotContainer.disabledInit();
   }
 
   @Override
-  public void disabledPeriodic() {}
+  public void disabledPeriodic() {
+    // Update the dashboard with the current auto starting pose
+    m_robotContainer.disabledPeriodic();
+  }
 
   @Override
   public void disabledExit() {}
@@ -55,15 +71,15 @@ public class Robot extends TimedRobot {
   public void autonomousPeriodic() {}
 
   @Override
-  public void autonomousExit() {}
-
-  @Override
-  public void teleopInit() {
-    // If an autonomous command is running, cancel it when teleop starts.
+  public void autonomousExit() {
+    // If an autonomous command is running, cancel it now
     if (m_autonomousCommand != null) {
       CommandScheduler.getInstance().cancel(m_autonomousCommand);
     }
+  }
 
+  @Override
+  public void teleopInit() {
     // Initialize teleop mode for all subsystems
     m_robotContainer.teleopInit();
   }
