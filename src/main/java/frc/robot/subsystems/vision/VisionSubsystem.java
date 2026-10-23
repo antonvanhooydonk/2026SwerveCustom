@@ -10,13 +10,11 @@ import java.util.Map;
 import java.util.Optional;
 
 import org.photonvision.EstimatedRobotPose;
-import org.photonvision.simulation.SimCameraProperties;
 import org.photonvision.targeting.PhotonPipelineResult;
 import org.photonvision.targeting.PhotonTrackedTarget;
 
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Pose2d;
-import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Transform3d;
 import edu.wpi.first.util.sendable.SendableBuilder;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
@@ -278,20 +276,6 @@ public class VisionSubsystem extends SubsystemBase {
 
     // Return the calculated standard deviations for x, y, and theta
     return new double[] { xyStdDev, xyStdDev, thetaStdDev };
-  }
-
-  /**
-   * Creates simulated camera properties for PhotonVision simulation
-   * @return SimCameraProperties object with configured properties
-   */
-  private static SimCameraProperties createSimCameraProperties() {
-    var props = new SimCameraProperties();
-    props.setCalibration(640, 480, Rotation2d.fromDegrees(90));
-    props.setCalibError(0.25, 0.08);   // avg / std-dev pixel error
-    props.setFPS(20);
-    props.setAvgLatencyMs(35);
-    props.setLatencyStdDevMs(5);
-    return props;
   }
 
   // ==================== Public state accessors ====================
