@@ -82,21 +82,11 @@ public class AbsoluteEncoder implements Sendable {
    * @return Angle in radians (-π to π)
    */
   public double getAngleRadians() {
-    // Get position from AnalogEncoder (0.0 to 1.0 rotations)
-    double position = analogEncoder.get();
-    
-    // Convert position to radians (0 to 2π)
-    double angle = position * 2.0 * Math.PI;
-    
-    // Apply offset
-    angle -= offsetRadians;
-    
-    // Apply inversion if needed
-    if (inverted) {
+    double angle = analogEncoder.get() * 2.0 * Math.PI;
+    if (inverted) { 
       angle = -angle;
     }
-
-    // Return the angle normalized to (-π, π)
+    angle -= offsetRadians;
     return Utils.normalizeAngle(angle);
   }
   
@@ -112,7 +102,7 @@ public class AbsoluteEncoder implements Sendable {
   /**
    * Gets the current angle in degrees.
    * The current offset and inversion are applied if configured.
-   * @return Angle in degrees (0 to 360) 
+   * @return Angle in degrees (-180 to 180) 
    */
   public double getAngleDegrees() {
     return Units.radiansToDegrees(getAngleRadians());
@@ -132,10 +122,8 @@ public class AbsoluteEncoder implements Sendable {
    * @return Raw angle in radians (0 to 2π) 
    */
   public double getRawAngleRadians() {
-    double voltage = getRawVoltage();
-    double supplyVoltage = RobotController.getVoltage5V();
-    double angle = (voltage / supplyVoltage) * 2.0 * Math.PI;    
-    if (inverted) {
+    double angle = analogEncoder.get() * 2.0 * Math.PI;
+    if (inverted) { 
       angle = -angle;
     }
     return Utils.normalizeAngle(angle);
@@ -189,7 +177,6 @@ public class AbsoluteEncoder implements Sendable {
    * @return True if readings appear valid
    */
   public boolean isValid() {
-    // Consider valid if noise count is below threshold
     return noiseCount < 10;
   }
 

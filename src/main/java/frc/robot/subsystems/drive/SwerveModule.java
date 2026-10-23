@@ -10,11 +10,13 @@ import com.ctre.phoenix6.signals.NeutralModeValue;
 
 import static edu.wpi.first.units.Units.Newtons;
 
+import com.ctre.phoenix6.StatusCode;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.VelocityVoltage;
 import com.ctre.phoenix6.controls.VoltageOut;
 
 import com.revrobotics.PersistMode;
+import com.revrobotics.REVLibError;
 import com.revrobotics.RelativeEncoder;
 import com.revrobotics.ResetMode;
 import com.revrobotics.spark.config.SparkBaseConfig.IdleMode;
@@ -24,10 +26,10 @@ import com.revrobotics.spark.SparkMax;
 import com.revrobotics.spark.SparkLowLevel.MotorType;
 import com.revrobotics.spark.SparkClosedLoopController;
 
+import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.kinematics.SwerveModulePosition;
 import edu.wpi.first.math.kinematics.SwerveModuleState;
-import edu.wpi.first.math.util.Units;
 import edu.wpi.first.units.measure.Force;
 import edu.wpi.first.util.sendable.Sendable;
 import edu.wpi.first.util.sendable.SendableBuilder;
@@ -138,9 +140,9 @@ public class SwerveModule implements Sendable {
     resetEncoders();
 
     // Initialize cached state & position
+    targetState = new SwerveModuleState(0.0, new Rotation2d());
     cachedState = new SwerveModuleState(0.0, new Rotation2d());
     cachedPosition = new SwerveModulePosition(0.0, new Rotation2d());
-    targetState = new SwerveModuleState(0.0, new Rotation2d());
 
     // Initialize dashboard values
     SmartDashboard.putData("Drive/Modules/" + this.moduleName, this);
@@ -184,7 +186,7 @@ public class SwerveModule implements Sendable {
       .withKA(SwerveConstants.kDriveKA);     // Acceleration feedforward
     
     // Apply the configuration to the motor
-    driveMotor.getConfigurator().apply(driveConfig);
+    applyTalonFXConfig(driveConfig);
 
     // -------------------------------------------------------
     // OPTIMIZE CAN STATUS FRAMES for reduced lag
@@ -215,21 +217,17 @@ public class SwerveModule implements Sendable {
       .feedbackSensor(FeedbackSensor.kPrimaryEncoder)
       .outputRange(-1.0, 1.0)
       .positionWrappingEnabled(true)      
-      .positionWrappingInputRange(-Math.PI, Math.PI) 
-      .p(SwerveConstants.kSteerKP)   // Proportional gain
-      .i(SwerveConstants.kSteerKI)   // Integral gain
-      .d(SwerveConstants.kSteerKD);  // Derivative gain
-
-    // Feedforward configuration
-    // kS (static friction) is typically 0.0 for NEOs with good PID tuning.
-    // Increase to 0.1 - 0.2 if experiencing steady-state position errors.
-    // steerConfig.closedLoop.feedForward.kS(DriveConstants.kSteerKS); // Static gain
-
-    // Set position conversion factor (rotations to radians)
-    // Set velocity conversion factor (rotations per minute to radians per second)
-    steerConfig.encoder
-      .positionConversionFactor(2 * Math.PI / SwerveConstants.kSteerGearRatio)
-      .velocityConversionFactor(2 * Math.PI / SwerveConstants.kSteerGearRatio / 60.0);
+      .positionWrappingInputRange(
+        -SwerveConstants.kSteerGearRatio / 2.0, 
+         SwerveConstants.kSteerGearRatio / 2.0
+      )
+      .p(SwerveConstants.kSteerKP)
+      .i(SwerveConstants.kSteerKI)
+      .d(SwerveConstants.kSteerKD)
+      .feedForward
+        .kS(SwerveConstants.kSteerKS)
+        .kV(SwerveConstants.kSteerKV)
+        .kA(SwerveConstants.kSteerKA);
 
     // Optimize CAN status frames for reduced lag
     steerConfig.signals
@@ -242,11 +240,31 @@ public class SwerveModule implements Sendable {
       .externalOrAltEncoderVelocity(500);   // Alt encoder: unused (was Status4)    
 
     // Apply the configuration to the motor
-    steerMotor.configure(
-      steerConfig, 
-      ResetMode.kResetSafeParameters, 
-      PersistMode.kPersistParameters
-    );
+    applySparkMaxConfig(steerConfig);
+  }
+
+  /**
+   * Applies a TalonFXConfiguration to the drive motor with retry.
+   * @param config The TalonFXConfiguration to apply
+   */
+  private void applyTalonFXConfig(TalonFXConfiguration config) {
+    StatusCode status = StatusCode.StatusCodeNotInitialized;
+    for (int i = 0; i < 5 && !status.isOK(); i++) {
+      status = driveMotor.getConfigurator().apply(config);
+    }
+    if (!status.isOK()) Utils.logError(moduleName + " drive config failed: " + status);
+  }
+
+  /**
+   * Applies a SparkMaxConfig to the steer motor with retry.
+   * @param config The SparkMaxConfig to apply
+   */
+  private void applySparkMaxConfig(SparkMaxConfig config) {
+    REVLibError err = REVLibError.kUnknown;
+    for (int i = 0; i < 5 && err != REVLibError.kOk; i++) {
+      err = steerMotor.configure(config, ResetMode.kResetSafeParameters, PersistMode.kPersistParameters);
+    }
+    if (err != REVLibError.kOk) Utils.logError(moduleName + " steer config failed: " + err);
   }
 
   /**
@@ -254,7 +272,9 @@ public class SwerveModule implements Sendable {
    */
   public void periodic() {
     // Get the current steer angle once each periodic (shared by state and position)
-    Rotation2d currentAngle = new Rotation2d(Utils.normalizeAngle(steerEncoder.getPosition()));
+    Rotation2d currentAngle = new Rotation2d(Utils.normalizeAngle(
+      Conversions.rotationsToRadians(steerEncoder.getPosition(), SwerveConstants.kSteerGearRatio)
+    ));
  
     // Update cached state (avoids newing SwerveModuleState each time)
     cachedState.speedMetersPerSecond = Conversions.motorRPSToWheelMPS(
@@ -286,7 +306,29 @@ public class SwerveModule implements Sendable {
     driveMotor.setPosition(0);
     
     // Set the relative encoder to match the absolute encoder
-    steerEncoder.setPosition(absoluteEncoder.getAngleRadians());
+    steerEncoder.setPosition(Conversions.radiansToRotations(
+      absoluteEncoder.getAngleRadians(), 
+      SwerveConstants.kSteerGearRatio
+    ));
+  }
+
+  /**
+   * Resets the steer encoder.
+   * Steer encoder is synchronized to the absolute encoder.
+   */
+  public void resetSteerEncoders() {
+    steerEncoder.setPosition(Conversions.radiansToRotations(
+      absoluteEncoder.getAngleRadians(), 
+      SwerveConstants.kSteerGearRatio
+    ));
+  }
+
+  /**
+   * Gets the name of the swerve module
+   * @return The module name
+   */
+  public String getModuleName() {
+    return moduleName;
   }
 
   /**
@@ -321,14 +363,14 @@ public class SwerveModule implements Sendable {
    * @param feedforward The feedforward force to apply
    */
   public void setDesiredState(SwerveModuleState desiredState, Force feedforward) {
-    // Ensure desired state is not null
-    if (desiredState == null) {
+    // Bad input: stop driving, leave the steer setpoint alone
+    if (
+      desiredState == null || 
+      !Double.isFinite(desiredState.speedMetersPerSecond) || 
+      !Double.isFinite(desiredState.angle.getRadians())
+    ) {
+      setDriveVelocity(0.0, null);
       return;
-    }
-  
-    // Only optimize if not using the setpoint generator (which already optimizes angles)
-    if (!SwerveConstants.kUseSetpointGenerator) {
-      desiredState.optimize(cachedState.angle);
     }
 
     // Command the robot to move
@@ -346,8 +388,16 @@ public class SwerveModule implements Sendable {
    * @param feedforward The feedforward force to apply
    */
   private void setDriveVelocity(double velocityMPS, Force feedforward) {
-    double velocityRPS = Conversions.wheelMPSToMotorRPS(
+    // Clamp the velocity to a safe range
+    double clamped = MathUtil.clamp(
       velocityMPS, 
+      -SwerveConstants.kMaxSpeedMetersPerSecond, 
+      SwerveConstants.kMaxSpeedMetersPerSecond
+    );
+
+    // Convert velocity (m/s) to motor rotations per second (RPS)
+    double velocityRPS = Conversions.wheelMPSToMotorRPS(
+      clamped, 
       SwerveConstants.kDriveGearRatio, 
       SwerveConstants.kWheelCircumference
     );
@@ -355,10 +405,10 @@ public class SwerveModule implements Sendable {
     // Convert force (N) to voltage
     double feedforwardVolts = 0.0;
     if (feedforward != null) {
-      feedforwardVolts = feedforward.in(Newtons) 
-        * SwerveConstants.kWheelRadiusMeters 
-        * SwerveConstants.kDriveGearRatio 
-        / SwerveConstants.kDriveMotorKT;
+      double volts = feedforward.in(Newtons) * SwerveConstants.kDriveVoltsPerNewton;
+      if (Double.isFinite(volts)) {
+        feedforwardVolts = MathUtil.clamp(volts, -12.0, 12.0);
+      }
     }
 
     // Command the drive motor with velocity and feedforward
@@ -371,8 +421,19 @@ public class SwerveModule implements Sendable {
    * @param angleRadians Desired angle in radians
    */
   public void setSteerAngle(double angleRadians) {
-    double angle = Utils.normalizeAngle(angleRadians);
-    steerPIDController.setSetpoint(angle, SparkMax.ControlType.kPosition);
+    // Ignore bad input
+    if (!Double.isFinite(angleRadians)) {
+      return;
+    }
+    
+    // Convert the angle to motor rotations
+    double rotations = Conversions.radiansToRotations(
+      Utils.normalizeAngle(angleRadians), 
+      SwerveConstants.kSteerGearRatio
+    );
+
+    // Command the steering motor to the desired angle
+    steerPIDController.setSetpoint(rotations, SparkMax.ControlType.kPosition);
   }
 
   /**
@@ -385,11 +446,7 @@ public class SwerveModule implements Sendable {
     
     // Set steering motor neutral/idle mode
     steerConfig.idleMode(brake ? IdleMode.kBrake : IdleMode.kCoast);
-    steerMotor.configure(
-      steerConfig, 
-      ResetMode.kNoResetSafeParameters, 
-      PersistMode.kNoPersistParameters
-    );
+    applySparkMaxConfig(steerConfig);
   }
 
   /**
@@ -403,6 +460,30 @@ public class SwerveModule implements Sendable {
   // ---------------------------------------------------------------------------------------
   // Control methods used by SysId or testing (not used by main drive code)
   // ---------------------------------------------------------------------------------------
+
+  /**
+   * Gets the current drive position in meters
+   * @return The drive position in meters
+   */
+  public double getDrivePositionMeters() { 
+    return cachedPosition.distanceMeters; 
+  }
+
+  /**
+   * Gets the current drive velocity in meters per second
+   * @return The drive velocity in meters per second
+   */
+  public double getDriveVelocityMPS() { 
+    return cachedState.speedMetersPerSecond; 
+  }
+
+  /**
+   * Gets the current drive voltage in volts
+   * @return The drive voltage in volts
+   */
+  public double getDriveVoltage() { 
+    return driveMotor.getMotorVoltage().getValueAsDouble(); 
+  }
 
   /**
    * Sets the drive motor voltage directly (for sysId or testing)
@@ -429,11 +510,6 @@ public class SwerveModule implements Sendable {
     builder.addDoubleProperty("Target Angle (deg)", () -> Utils.showDouble(targetState.angle.getDegrees()), null);
     builder.addDoubleProperty("Current Speed (mps)", () -> Utils.showDouble(getState().speedMetersPerSecond), null);
     builder.addDoubleProperty("Current Angle (deg)", () -> Utils.showDouble(getState().angle.getDegrees()), null);
-    builder.addDoubleProperty("Angle Error (deg)", () -> {
-      double targetAngle = Utils.normalizeAngle(targetState.angle.getRadians());
-      double currentAngle = Utils.normalizeAngle(cachedState.angle.getRadians());
-      return Utils.showDouble(Units.radiansToDegrees(Math.abs(targetAngle - currentAngle)));
-    }, null);
     builder.addDoubleProperty("Absolute Encoder (deg)", () -> Utils.showDouble(absoluteEncoder.getAngleDegrees()), null);
     builder.addDoubleProperty("Drive Voltage (V)", () -> Utils.showDouble(driveMotor.getSupplyVoltage().getValueAsDouble()), null);
     builder.addDoubleProperty("Drive Current (A)", () -> Utils.showDouble(driveMotor.getSupplyCurrent().getValueAsDouble()), null);

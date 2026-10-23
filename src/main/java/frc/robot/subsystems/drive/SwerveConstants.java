@@ -7,11 +7,14 @@ package frc.robot.subsystems.drive;
 import com.pathplanner.lib.config.ModuleConfig;
 import com.pathplanner.lib.config.RobotConfig;
 import com.pathplanner.lib.path.PathConstraints;
+import com.pathplanner.lib.util.FlippingUtil;
 
+import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.system.plant.DCMotor;
 import edu.wpi.first.math.util.Units;
-
+import frc.robot.Constants.FieldConstants;
 import frc.robot.Robot;
 
 /**
@@ -29,7 +32,6 @@ public final class SwerveConstants {
   public static final double kMaxSpeedMetersPerSecond = Units.feetToMeters(14); // max translational speed, ensure <= kMaxDriveVelocityAt12VoltsMPS (15.5), set 7 in loft, 10 - 14 at competition
   public static final double kMaxAccelMetersPerSecondSq = Units.feetToMeters(16); // max translational acceleration
   public static final double kMaxAngularSpeedRadsPerSecond = Units.rotationsToRadians(1.75); // max rotational speed, conservative: 1.0 - 1.5, competitive: 1.5 - 2.0, aggressive: 2.0 - 2.5
-  public static final double kMaxAngularAccelRadsPerSecondSq = kMaxAngularSpeedRadsPerSecond * 3.0; // max rotational acceleration,  typically 2.0 to 4.0 times kMaxAngularSpeedRadsPerSecond
   public static final double kSlowModeScaling = 0.25; // scaling factor for "slow mode", typically 0.25 to 0.5, adjust as needed for driver control at low speeds
 
   public static final boolean kUseSetpointGenerator = true && Robot.isReal();
@@ -37,8 +39,18 @@ public final class SwerveConstants {
   // ------------------------------------------------------------
   // Driver joystick settings
   // ------------------------------------------------------------
+  public static final double kTranslationSlewRateLimit = 3.0; // limit for translational acceleration
+  public static final double kRotationSlewRateLimit = 4.0; // limit for rotational acceleration
   public static final double kJoystickInputExponent = 2.0; // 2 to square, 3 to cube
   public static final double kJoystickDeadband  = 0.1; // typically 0.05 to 0.15
+
+  // ------------------------------------------------------------
+  // Alignment tolerances for auto start pose
+  // ------------------------------------------------------------
+  public static final Pose2d kBlueSeedPose = new Pose2d(2.0, FieldConstants.kFieldWidthMeters / 2.0, Rotation2d.kZero);
+  public static final Pose2d kRedSeedPose = FlippingUtil.flipFieldPose(kBlueSeedPose);
+  public static final double kStartPoseTranslationToleranceMeters = Units.inchesToMeters(0.5);
+  public static final double kStartPoseRotationToleranceDegrees = 0.5;
 
   // ------------------------------------------------------------
   // Vision fusion measurement settings
@@ -53,6 +65,17 @@ public final class SwerveConstants {
    * Rejects vision measurements that are too far from current estimate
    */
   public static final double kVisionMaxTranslationJumpMeters = 1.0;
+
+  /**
+   * Maximum number of consecutive vision measurement rejections before forcing acceptance.
+   * This helps to account for genuine odometry drift rather than bad vision readings.
+   */
+  public static final int kMaxConsecutiveVisionRejections = 10;
+
+  // Reject vision while the robot is moving too fast for a clean camera frame (motion blur).
+  // Rotation is the main culprit. Start here, then tune from logs.
+  public static final double kVisionMaxAngularVelocityRadPerSec = 2.0;   // ~115 deg/s
+  public static final double kVisionMaxLinearVelocityMetersPerSec = 4.0; // set very high to effectively disable
 
   // ============================================================
   // BELOW THIS LINE SHOULDN'T BE CHANGED AT COMPETITION
@@ -72,8 +95,10 @@ public final class SwerveConstants {
   public static final double kRobotMassKg = Units.lbsToKilograms(134);
   public static final double kRobotMOI = 1/12 * kRobotMassKg * ((kTrackWidthMeters * kTrackWidthMeters) + (kWheelBaseMeters * kWheelBaseMeters)); // kg m^2, moment of inertia about center of robot
   public static final double kMaxDriveVelocityAt12VoltsMPS = Units.feetToMeters(15.5); // MK4i L2 Kraken non-FOC With 14t pinion (https://www.swervedrivespecialties.com/products/mk4i-swerve-module?variant=47316033798445)
+  public static final double kSteerMaxAngularSpeedRadsPerSecond = Units.rotationsToRadians(3.0); // steering motor max rotational speed (not the same as robot rotational speed)
   public static final double kDriveMotorKT = 0.0194; // Torque constant of the drive motor (Nm/A)
-
+  public static final double kDriveMotorOhms = 0.033; // Resistance of the drive motor (Ohms)
+  public static final double kDriveVoltsPerNewton = kWheelRadiusMeters / kDriveGearRatio / kDriveMotorKT * kDriveMotorOhms;
   public static final double kGyroAngleOffsetDegrees = 0.0; // default 0.0 - Rotate the gyro X axis if the gyro was not installed facing forward
   public static final double kPeriodicTimeSeconds = 0.02; // 20ms (default)
 
@@ -112,11 +137,26 @@ public final class SwerveConstants {
   // ------------------------------------------------------------
   // Autobuilder constants
   // ------------------------------------------------------------
-  public static final PathConstraints kPathfindingConstraints = new PathConstraints(
-    3.0, // Velocity (m/s)
-    4.0, // Acceleration (m/s^2)
-    Units.degreesToRadians(540), // Angular velocity (rad/s)
-    Units.degreesToRadians(720) // Angular acceleration (rad/s^2)
+  public static final double kStagingDistanceMeters = 0.75;
+  public static final double kStagingEndVelocityMPS = 0.03;
+  public static final double kAlignTranslationToleranceMeters = 0.025;
+  public static final double kAlignRotationToleranceRadians = Units.degreesToRadians(2.0);
+  public static final double kAlignTimeoutSeconds = 6.0;
+
+  // Fast open field travel when approaching 
+  public static final PathConstraints kStagingConstraints = new PathConstraints(
+    3.5,
+    3.0,
+    Units.degreesToRadians(540),
+    Units.degreesToRadians(720)
+  );
+  
+  // Slow creeping control for the final alignment
+  public static final PathConstraints kPrecisionConstraints = new PathConstraints(
+    1.0, 
+    1.5,
+    Units.degreesToRadians(180), 
+    Units.degreesToRadians(360)
   );
 
   public static final RobotConfig kRobotConfig = new RobotConfig(
@@ -127,7 +167,7 @@ public final class SwerveConstants {
       kMaxDriveVelocityAt12VoltsMPS,
       kWheelCOF, 
       DCMotor.getKrakenX60(1).withReduction(kDriveGearRatio),
-      60.0,
+      40.0,
       1
     ),
     kSwerveModuleTranslations
@@ -160,4 +200,6 @@ public final class SwerveConstants {
   public static final double kSteerKI = 0.0;    // usually 0.0
   public static final double kSteerKD = 0.0;    // usually 0.0 - 0.10
   public static final double kSteerKS = 0.0;    // usually 0.0 - 0.10, Rev recommends 0 
+  public static final double kSteerKV = 0.0;    // usually 0.0 - 0.10, Rev recommends 0 
+  public static final double kSteerKA = 0.0;    // usually 0.0 - 0.10, Rev recommends 0 
 }
