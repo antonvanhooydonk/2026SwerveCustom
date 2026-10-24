@@ -364,7 +364,6 @@ public class DriveModule implements Sendable {
       !Double.isFinite(desiredState.angle.getRadians())
     ) {
       setDriveVelocity(0.0, null);
-      targetState.speedMetersPerSecond = 0.0;
       return;
     }
 
