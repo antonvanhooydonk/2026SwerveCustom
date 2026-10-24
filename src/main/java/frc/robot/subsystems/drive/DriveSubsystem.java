@@ -420,6 +420,7 @@ public class DriveSubsystem extends SubsystemBase {
    * @param brake True to enable motor brake, false for coast
    */
   private void setMotorBrake(boolean brake) {
+    if (brake == this.brakeMode) return;
     brakeMode = brake;
     for (var module : modules) {
       module.setMotorBrake(brakeMode);
@@ -530,7 +531,7 @@ public class DriveSubsystem extends SubsystemBase {
    * @return Current field-relative ChassisSpeeds
    */
   public ChassisSpeeds getFieldRelativeSpeeds() {
-    return ChassisSpeeds.fromRobotRelativeSpeeds(getRobotRelativeSpeeds(), gyro.getAngle());
+    return ChassisSpeeds.fromRobotRelativeSpeeds(getRobotRelativeSpeeds(), getHeading());
   }
 
   /**
@@ -622,6 +623,11 @@ public class DriveSubsystem extends SubsystemBase {
    * Should be called from Robot.autonomousInit() or a command scheduler binding.
    */
   public void autonomousInit() {
+    // Never start a match in coast (pit toggle may have been left on)
+    if (!brakeMode) {
+      setMotorBrake(true);
+    }
+
     // Backstop in case the alliance only became known after the last disabledPeriodic()
     seedHeadingForAlliance();
 
@@ -646,6 +652,11 @@ public class DriveSubsystem extends SubsystemBase {
    * Should be called from Robot.teleopInit() or a command scheduler binding.
    */
   public void teleopInit() {
+    // Never start a match in coast (pit toggle may have been left on)
+    if (!brakeMode) {
+      setMotorBrake(true);
+    }
+
     // Backstop (no-op if already seeded for this alliance, e.g. after autonomous)
     seedHeadingForAlliance();
 

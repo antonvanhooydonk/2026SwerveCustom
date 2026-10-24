@@ -16,6 +16,8 @@ import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.VelocityVoltage;
 import com.ctre.phoenix6.controls.VoltageOut;
 
+import com.revrobotics.PersistMode;
+import com.revrobotics.ResetMode;
 import com.revrobotics.RelativeEncoder;
 import com.revrobotics.spark.config.SparkBaseConfig.IdleMode;
 import com.revrobotics.spark.config.SparkMaxConfig;
@@ -279,6 +281,7 @@ public class DriveModule implements Sendable {
 
     // Refresh the drive motor status signals (avoids newing StatusSignal each time)
     BaseStatusSignal.refreshAll(drivePosition, driveVelocity);
+    BaseStatusSignal.getLatencyCompensatedValue(drivePosition, driveVelocity);
  
     // Update cached state (avoids newing SwerveModuleState each time)
     cachedState.speedMetersPerSecond = Conversions.rotationsToMeters(
@@ -455,7 +458,14 @@ public class DriveModule implements Sendable {
     // Set steering motor neutral/idle mode
     SparkMaxConfig brakeConfig = new SparkMaxConfig();
     brakeConfig.idleMode(brake ? IdleMode.kBrake : IdleMode.kCoast);
-    SparkMaxFactory.patchConfig(steerMotor, brakeConfig);
+
+    // Apply the configuration to the steering motor
+    SparkMaxFactory.applyConfig(
+      steerMotor, 
+      brakeConfig, 
+      ResetMode.kNoResetSafeParameters, 
+      PersistMode.kNoPersistParameters
+    );
   }
 
   /**
