@@ -428,16 +428,6 @@ public class DriveSubsystem extends SubsystemBase {
   }
 
   /**
-   * Resets all swerve module encoders to zero. Should be called when the robot is stationary and
-   * the wheels are in a known position (e.g. straight forward) to ensure accurate odometry.
-   */
-  private void resetEncoders() {
-    for (var module : modules) {
-      module.resetEncoders();
-    }
-  }
-
-  /**
    * Resets odometry to a specific pose and resets module encoders.
    * NOTE: Should never need to call this if vision is working properly.
    */
@@ -1086,16 +1076,6 @@ public class DriveSubsystem extends SubsystemBase {
       Utils.logError("Drive_PathfindThenFollowPath_ " + pathName + ": " + ex.getMessage());
       return Commands.none();
     }
-  }
-
-  /**
-   * Reset the swerver module encoders to zero, which is useful 
-   * for calibration and ensuring accurate odometry.
-   */
-  public Command resetEncodersCommand() {
-    return runOnce(this::resetEncoders)
-      .ignoringDisable(true)
-      .withName("Drive_ResetEncoders");
   }
 
   /**

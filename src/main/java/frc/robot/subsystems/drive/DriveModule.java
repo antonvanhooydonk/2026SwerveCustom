@@ -8,6 +8,7 @@ import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
 
+
 import static edu.wpi.first.units.Units.Newtons;
 
 import com.ctre.phoenix6.BaseStatusSignal;
@@ -29,6 +30,7 @@ import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.kinematics.SwerveModulePosition;
 import edu.wpi.first.math.kinematics.SwerveModuleState;
+import edu.wpi.first.math.util.Units;
 import edu.wpi.first.units.measure.Angle;
 import edu.wpi.first.units.measure.AngularVelocity;
 import edu.wpi.first.units.measure.Current;
@@ -75,6 +77,9 @@ public class DriveModule implements Sendable {
 
   // Target state (used for telemetry only)
   private SwerveModuleState targetState;
+
+  // Counter for encoder drift detection
+  private int driftLoops = 0;
 
   // Status signals for drive motor telemetry
   private final StatusSignal<Angle> drivePosition;
@@ -265,6 +270,34 @@ public class DriveModule implements Sendable {
 
     // Update the absolute encoder (for diagnostics)
     absoluteEncoder.periodic();
+
+    // Check for encoder drift and reset if necessary
+    checkEncoderDrift();
+  }
+
+  /**
+   * Checks for encoder drift and resets the steer encoder if necessary.
+   * This is a safety feature to prevent the steer encoder from 
+   * drifting too far from the absolute encoder.
+   */
+  private void checkEncoderDrift() {
+    double volts = absoluteEncoder.getRawVoltage();
+    boolean stationary = Math.abs(cachedState.speedMetersPerSecond) < 0.05;
+    double errorRad = MathUtil.angleModulus(absoluteEncoder.getAngleRadians() - cachedState.angle.getRadians());
+
+    if (
+      stationary && 
+      volts > 0.15 && 
+      volts < 4.85 && 
+      Math.abs(errorRad) > Units.degreesToRadians(10)
+    ) {
+      if (++driftLoops >= 25) { 
+        resetSteerEncoders();
+        driftLoops = 0;
+      }
+    } else {
+      driftLoops = 0;
+    }
   }
 
   /**
