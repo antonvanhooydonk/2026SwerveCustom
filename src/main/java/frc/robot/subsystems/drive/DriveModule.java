@@ -173,7 +173,10 @@ public class DriveModule implements Sendable {
     config.MotorOutput
       .withDutyCycleNeutralDeadband(0.001)  // 0.1% deadband (tight control)
       .withNeutralMode(NeutralModeValue.Brake)
-      .withInverted(driveMotorInverted ? InvertedValue.Clockwise_Positive : InvertedValue.CounterClockwise_Positive);
+      .withInverted(driveMotorInverted 
+        ? InvertedValue.Clockwise_Positive 
+        : InvertedValue.CounterClockwise_Positive
+      );
     
     // Current limits (hardcoded here for safety)
     config.CurrentLimits
