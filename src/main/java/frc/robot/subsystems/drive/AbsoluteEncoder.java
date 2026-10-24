@@ -119,7 +119,7 @@ public class AbsoluteEncoder implements Sendable {
   /**
    * Gets the current raw angle in radians from the analog input.
    * Use this value directly for setting the module offsets in DriveConstants.
-   * @return Raw angle in radians (0 to 2π) 
+   * @return Raw angle in radians (-π to π) 
    */
   public double getRawAngleRadians() {
     double angle = analogEncoder.get() * 2.0 * Math.PI;

@@ -123,7 +123,7 @@ public class DriveModule implements Sendable {
     driveMotor = TalonFXFactory.createMotor(this.driveMotorID, getDriveMotorConfig());
 
     // Initialize the steering motor
-    steerMotor = SparkMaxFactory.createBrushedMotor(this.steerMotorID, getSteerMotorConfig());
+    steerMotor = SparkMaxFactory.createMotor(this.steerMotorID, getSteerMotorConfig());
 
     // Initialize the absolute encoder
     absoluteEncoder = new AbsoluteEncoder(
@@ -244,13 +244,10 @@ public class DriveModule implements Sendable {
    */
   public void periodic() {
     // Get the current steer angle once each periodic (shared by state and position)
-    Rotation2d currentAngle = new Rotation2d(Utils.normalizeAngleRadians(
-      Conversions.rotationsToRadians(steerEncoder.getPosition(), DriveConstants.kSteerGearRatio)
-    ));
+    Rotation2d currentAngle = new Rotation2d(getSteerAngleRadians());
 
     // Refresh the drive motor status signals (avoids newing StatusSignal each time)
     BaseStatusSignal.refreshAll(drivePosition, driveVelocity);
-    BaseStatusSignal.getLatencyCompensatedValue(drivePosition, driveVelocity);
  
     // Update cached state (avoids newing SwerveModuleState each time)
     cachedState.speedMetersPerSecond = Conversions.rotationsToMeters(
@@ -282,8 +279,8 @@ public class DriveModule implements Sendable {
    */
   private void checkEncoderDrift() {
     double volts = absoluteEncoder.getRawVoltage();
-    boolean stationary = Math.abs(cachedState.speedMetersPerSecond) < 0.05;
-    double errorRad = MathUtil.angleModulus(absoluteEncoder.getAngleRadians() - cachedState.angle.getRadians());
+    boolean stationary = Math.abs(cachedState.speedMetersPerSecond) < 0.05 && Math.abs(getSteerVelocityRadPerSec()) < 0.5;
+    double errorRad = Utils.normalizeAngleRadians(absoluteEncoder.getAngleRadians() - getSteerAngleRadians());
 
     if (
       stationary && 
@@ -499,6 +496,14 @@ public class DriveModule implements Sendable {
    */
   public void setDriveVoltage(double volts) {
     driveMotor.setControl(new VoltageOut(volts));
+  }
+
+  /**
+   * Gets the current steering angle in radians (normalized to (-π, π))
+   * @return The steering angle in radians
+   */
+  public double getSteerAngleRadians() {
+    return Utils.normalizeAngleRadians(Conversions.rotationsToRadians(steerEncoder.getPosition(), DriveConstants.kSteerGearRatio));
   }
 
   /**

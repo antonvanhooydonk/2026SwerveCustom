@@ -45,7 +45,7 @@ public final class Utils {
    * @return Normalized angle in radians
    */
   public static double normalizeAngleRadians(double angleRadians) {
-    return MathUtil.inputModulus(angleRadians, -Math.PI, Math.PI);
+    return MathUtil.angleModulus(angleRadians);
   }
 
   /**
