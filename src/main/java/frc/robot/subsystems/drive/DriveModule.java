@@ -543,7 +543,6 @@ public class DriveModule implements Sendable {
    */
   @Override
   public void initSendable(SendableBuilder builder) {
-    builder.addDoubleProperty("Absolute Encoder (deg)", () -> Utils.showDouble(absoluteEncoder.getAngleDegrees()), null);
     builder.addDoubleProperty("Target Speed (mps)", () -> Utils.showDouble(targetState.speedMetersPerSecond), null);
     builder.addDoubleProperty("Target Angle (deg)", () -> Utils.showDouble(targetState.angle.getDegrees()), null);
     builder.addDoubleProperty("Current Speed (mps)", () -> Utils.showDouble(cachedState.speedMetersPerSecond), null);
