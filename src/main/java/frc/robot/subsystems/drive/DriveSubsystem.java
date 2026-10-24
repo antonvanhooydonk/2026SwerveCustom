@@ -222,7 +222,7 @@ public class DriveSubsystem extends SubsystemBase {
         },
         log -> {
           for (int i = 0; i < 4; i++) {
-            log.motor("drive-" + modules[i].getModuleName())
+            log.motor("drive-" + modules[i].getName())
               .voltage(sysIdVoltage.mut_replace(modules[i].getDriveVoltage(), Volts))
               .linearPosition(sysIdDistance.mut_replace(modules[i].getDrivePositionMeters(), Meters))
               .linearVelocity(sysIdLinVel.mut_replace(modules[i].getDriveVelocityMPS(), MetersPerSecond));

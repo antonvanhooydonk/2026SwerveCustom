@@ -10,15 +10,11 @@ import com.ctre.phoenix6.signals.NeutralModeValue;
 
 import static edu.wpi.first.units.Units.Newtons;
 
-import com.ctre.phoenix6.StatusCode;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.VelocityVoltage;
 import com.ctre.phoenix6.controls.VoltageOut;
 
-import com.revrobotics.PersistMode;
-import com.revrobotics.REVLibError;
 import com.revrobotics.RelativeEncoder;
-import com.revrobotics.ResetMode;
 import com.revrobotics.spark.config.SparkBaseConfig.IdleMode;
 import com.revrobotics.spark.config.SparkMaxConfig;
 import com.revrobotics.spark.FeedbackSensor;
@@ -36,6 +32,8 @@ import edu.wpi.first.util.sendable.SendableBuilder;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 
 import frc.robot.util.Conversions;
+import frc.robot.util.SparkMaxFactory;
+import frc.robot.util.TalonFXFactory;
 import frc.robot.util.Utils;
 
 /**
@@ -186,7 +184,7 @@ public class DriveModule implements Sendable {
       .withKA(DriveConstants.kDriveKA);     // Acceleration feedforward
     
     // Apply the configuration to the motor
-    applyTalonFXConfig(driveConfig);
+    TalonFXFactory.applyConfig(driveMotor, driveConfig);
 
     // -------------------------------------------------------
     // OPTIMIZE CAN STATUS FRAMES for reduced lag
@@ -240,31 +238,7 @@ public class DriveModule implements Sendable {
       .externalOrAltEncoderVelocity(500);   // Alt encoder: unused (was Status4)    
 
     // Apply the configuration to the motor
-    applySparkMaxConfig(steerConfig);
-  }
-
-  /**
-   * Applies a TalonFXConfiguration to the drive motor with retry.
-   * @param config The TalonFXConfiguration to apply
-   */
-  private void applyTalonFXConfig(TalonFXConfiguration config) {
-    StatusCode status = StatusCode.StatusCodeNotInitialized;
-    for (int i = 0; i < 5 && !status.isOK(); i++) {
-      status = driveMotor.getConfigurator().apply(config);
-    }
-    if (!status.isOK()) Utils.logError(moduleName + " drive config failed: " + status);
-  }
-
-  /**
-   * Applies a SparkMaxConfig to the steer motor with retry.
-   * @param config The SparkMaxConfig to apply
-   */
-  private void applySparkMaxConfig(SparkMaxConfig config) {
-    REVLibError err = REVLibError.kUnknown;
-    for (int i = 0; i < 5 && err != REVLibError.kOk; i++) {
-      err = steerMotor.configure(config, ResetMode.kResetSafeParameters, PersistMode.kPersistParameters);
-    }
-    if (err != REVLibError.kOk) Utils.logError(moduleName + " steer config failed: " + err);
+    SparkMaxFactory.applyConfig(steerMotor, steerConfig);
   }
 
   /**
@@ -327,7 +301,7 @@ public class DriveModule implements Sendable {
    * Gets the name of the swerve module
    * @return The module name
    */
-  public String getModuleName() {
+  public String getName() {
     return moduleName;
   }
 
@@ -446,7 +420,7 @@ public class DriveModule implements Sendable {
     
     // Set steering motor neutral/idle mode
     steerConfig.idleMode(brake ? IdleMode.kBrake : IdleMode.kCoast);
-    applySparkMaxConfig(steerConfig);
+    SparkMaxFactory.applyConfig(steerMotor, steerConfig);
   }
 
   /**
