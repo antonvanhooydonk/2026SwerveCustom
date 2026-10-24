@@ -302,18 +302,10 @@ public class DriveModule implements Sendable {
 
   /**
    * Resets the drive and steering encoders.
-   * Drive encoder is zeroed to prevent overflow.
-   * Steer encoder is synchronized to the absolute encoder.
    */
   public void resetEncoders() {
-    // Reset drive motor encoder position
     driveMotor.setPosition(0);
-    
-    // Set the relative encoder to match the absolute encoder
-    steerEncoder.setPosition(Conversions.radiansToRotations(
-      absoluteEncoder.getAngleRadians(), 
-      DriveConstants.kSteerGearRatio
-    ));
+    resetSteerEncoders();
   }
 
   /**
