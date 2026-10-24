@@ -27,13 +27,13 @@ public final class TalonFXFactory {
    * @return True if the configuration was applied successfully, false otherwise
    */
   public static boolean applyConfig(TalonFX motor, TalonFXConfiguration config) {
-    // Apply the configuration to the motor
-    StatusCode status = motor.getConfigurator().apply(config);
-
-    // Retry up to 3 times if the configuration fails
-    for (int i = 0; i < 3 && status != StatusCode.OK; i++) {
-      Utils.logError("Failed to apply TalonFX config, retrying... (" + (i + 1) + "/3)");
+    // Retry up to 5 times if the configuration fails
+    StatusCode status = StatusCode.GeneralError;
+    for (int i = 0; i < 5 && status != StatusCode.OK; i++) {
       status = motor.getConfigurator().apply(config);
+    }
+    if (status != StatusCode.OK) {
+      Utils.logError("Failed to apply configuration to TalonFX with device ID: " + motor.getDeviceID() + " after 5 attempts. Status: " + status);
     }
 
     // Return true if the configuration was applied successfully, false otherwise

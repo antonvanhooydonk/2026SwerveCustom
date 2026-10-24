@@ -58,13 +58,13 @@ public final class SparkMaxFactory {
     ResetMode resetMode, 
     PersistMode persistMode
   ) {
-    // Apply the configuration to the motor
-    REVLibError err = motor.configure(config, resetMode, persistMode);
-
-    // Retry up to 3 times if the configuration fails
-    for (int i = 0; i < 3 && err != REVLibError.kOk; i++) {
-      Utils.logError("Failed to apply SparkMax config, retrying... (" + (i + 1) + "/3)");
+    // Attempt to apply the configuration to the motor up to 5 times
+    REVLibError err = REVLibError.kUnknown;
+    for (int i = 0; i < 5 && err != REVLibError.kOk; i++) {
       err = motor.configure(config, resetMode, persistMode);
+    }
+    if (err != REVLibError.kOk) {
+      Utils.logError("Failed to apply configuration to SparkMax with device ID: " + motor.getDeviceId() + " after 5 attempts. Error: " + err);
     }
 
     // Return true if the configuration was applied successfully, false otherwise

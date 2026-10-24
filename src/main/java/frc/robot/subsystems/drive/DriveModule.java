@@ -10,6 +10,8 @@ import com.ctre.phoenix6.signals.NeutralModeValue;
 
 import static edu.wpi.first.units.Units.Newtons;
 
+import com.ctre.phoenix6.BaseStatusSignal;
+import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.VelocityVoltage;
 import com.ctre.phoenix6.controls.VoltageOut;
@@ -26,7 +28,12 @@ import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.kinematics.SwerveModulePosition;
 import edu.wpi.first.math.kinematics.SwerveModuleState;
+import edu.wpi.first.units.measure.Angle;
+import edu.wpi.first.units.measure.AngularVelocity;
+import edu.wpi.first.units.measure.Current;
 import edu.wpi.first.units.measure.Force;
+import edu.wpi.first.units.measure.Temperature;
+import edu.wpi.first.units.measure.Voltage;
 import edu.wpi.first.util.sendable.Sendable;
 import edu.wpi.first.util.sendable.SendableBuilder;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
@@ -71,6 +78,13 @@ public class DriveModule implements Sendable {
 
   // Target state (used for telemetry only)
   private SwerveModuleState targetState;
+
+  // Status signals for drive motor telemetry
+  private final StatusSignal<Angle> drivePosition;
+  private final StatusSignal<AngularVelocity> driveVelocity;
+  private final StatusSignal<Voltage> driveMotorVoltage;
+  private final StatusSignal<Current> driveSupplyCurrent;
+  private final StatusSignal<Temperature> driveTemp;
 
   /**
    * Construct a SwerveModule with the given parameters
@@ -121,6 +135,13 @@ public class DriveModule implements Sendable {
 
     // Initialize the drive velocity request
     driveVelocityRequest = new VelocityVoltage(0).withSlot(0);
+
+    // Initialize drive motor status signals
+    drivePosition = driveMotor.getPosition();
+    driveVelocity = driveMotor.getVelocity();
+    driveMotorVoltage = driveMotor.getMotorVoltage();
+    driveSupplyCurrent = driveMotor.getSupplyCurrent();
+    driveTemp = driveMotor.getDeviceTemp();
 
     // Configure drive motor
     configureDriveMotor();
@@ -189,12 +210,12 @@ public class DriveModule implements Sendable {
     // -------------------------------------------------------
     // OPTIMIZE CAN STATUS FRAMES for reduced lag
     // -------------------------------------------------------
-    driveMotor.getVelocity().setUpdateFrequency(50.0);      // Velocity feedback
-    driveMotor.getPosition().setUpdateFrequency(50.0);      // Position feedback
-    driveMotor.getMotorVoltage().setUpdateFrequency(25.0);  // Motor voltage
-    driveMotor.getSupplyCurrent().setUpdateFrequency(25.0); // Supply current
-    driveMotor.getTorqueCurrent().setUpdateFrequency(25.0); // Stator/torque current
-    driveMotor.getDeviceTemp().setUpdateFrequency(4.0);     // Temperature
+    // Control loop signals
+    BaseStatusSignal.setUpdateFrequencyForAll(100.0, drivePosition, driveVelocity);
+    BaseStatusSignal.setUpdateFrequencyForAll(20.0, driveMotorVoltage, driveSupplyCurrent);
+    driveTemp.setUpdateFrequency(2.0);
+
+    // MUST come last: turns off every signal not configured above
     driveMotor.optimizeBusUtilization();
   }
 
@@ -207,7 +228,7 @@ public class DriveModule implements Sendable {
       .idleMode(IdleMode.kBrake)                       // Brake mode for better control
       .inverted(steerMotorInverted)                    // Set motor inversion
       .smartCurrentLimit(25)                // Continuous current limit in Amps
-      .secondaryCurrentLimit(35, 20)  // Peak current limit: 35A for 20ms
+      .secondaryCurrentLimit(35, 20)  // Peak current limit: 35A for 20 chop cycles (0.4s) before limiting to 25A
       .voltageCompensation(12.0);       // Enable voltage compensation at 12V
 
     // Closed-loop PID configuration (gains are tunable in constants)
@@ -229,13 +250,19 @@ public class DriveModule implements Sendable {
 
     // Optimize CAN status frames for reduced lag
     steerConfig.signals
-      .primaryEncoderPositionPeriodMs(10)   // Position: 100Hz (was Status2)
-      .primaryEncoderVelocityPeriodMs(10)   // Velocity: 100Hz (was Status2)
-      .appliedOutputPeriodMs(100)           // Applied output: 10Hz (was Status0)
-      .faultsPeriodMs(200)                  // Faults: 5Hz (was Status1)
-      .analogVoltagePeriodMs(500)           // Analog: unused (was Status3)
-      .externalOrAltEncoderPosition(500)    // Alt encoder: unused (was Status4)
-      .externalOrAltEncoderVelocity(500);   // Alt encoder: unused (was Status4)    
+      // Needed every loop
+      .primaryEncoderPositionPeriodMs(10)
+      .primaryEncoderPositionAlwaysOn(true)   // valid from the first read after boot
+
+      // Not read in the control loop
+      .primaryEncoderVelocityPeriodMs(20)
+      .appliedOutputPeriodMs(100)
+      .faultsPeriodMs(250)
+
+      // Telemetry only
+      .motorTemperaturePeriodMs(500)
+      .outputCurrentPeriodMs(100)
+      .busVoltagePeriodMs(100);  
 
     // Apply the configuration to the motor
     SparkMaxFactory.applyConfig(steerMotor, steerConfig);
@@ -249,10 +276,13 @@ public class DriveModule implements Sendable {
     Rotation2d currentAngle = new Rotation2d(Utils.normalizeAngleRadians(
       Conversions.rotationsToRadians(steerEncoder.getPosition(), DriveConstants.kSteerGearRatio)
     ));
+
+    // Refresh the drive motor status signals (avoids newing StatusSignal each time)
+    BaseStatusSignal.refreshAll(drivePosition, driveVelocity);
  
     // Update cached state (avoids newing SwerveModuleState each time)
     cachedState.speedMetersPerSecond = Conversions.rotationsToMeters(
-      driveMotor.getVelocity().getValueAsDouble(), 
+      driveVelocity.getValueAsDouble(), 
       DriveConstants.kDriveGearRatio, 
       DriveConstants.kWheelCircumference
     );
@@ -260,7 +290,7 @@ public class DriveModule implements Sendable {
 
     // Update cached position (avoids newing SwerveModuleState each time)
     cachedPosition.distanceMeters = Conversions.rotationsToMeters(
-      driveMotor.getPosition().getValueAsDouble(),
+      drivePosition.getValueAsDouble(),
       DriveConstants.kDriveGearRatio,
       DriveConstants.kWheelCircumference
     );
@@ -339,21 +369,19 @@ public class DriveModule implements Sendable {
   public void setDesiredState(SwerveModuleState desiredState, Force feedforward) {
     // Bad input: stop driving, leave the steer setpoint alone
     if (
-      desiredState == null || 
-      !Double.isFinite(desiredState.speedMetersPerSecond) || 
+      desiredState == null ||
+      desiredState.angle == null ||
+      !Double.isFinite(desiredState.speedMetersPerSecond) ||
       !Double.isFinite(desiredState.angle.getRadians())
     ) {
       setDriveVelocity(0.0, null);
+      targetState.speedMetersPerSecond = 0.0;
       return;
     }
 
     // Command the robot to move
     setDriveVelocity(desiredState.speedMetersPerSecond, feedforward);
     setSteerAngle(desiredState.angle.getRadians());
-
-    // Update target state with current desired state for telemetry
-    targetState.speedMetersPerSecond = desiredState.speedMetersPerSecond;
-    targetState.angle = desiredState.angle;
   }
 
   /**
@@ -368,6 +396,9 @@ public class DriveModule implements Sendable {
       -DriveConstants.kMaxSpeedMetersPerSecond, 
       DriveConstants.kMaxSpeedMetersPerSecond
     );
+
+    // Update the target state for telemetry
+    targetState.speedMetersPerSecond = clamped;
 
     // Convert velocity (m/s) to motor rotations per second (RPS)
     double velocityRPS = Conversions.metersToRotations(
@@ -400,6 +431,9 @@ public class DriveModule implements Sendable {
       return;
     }
     
+    // Update the target state for telemetry
+    targetState.angle = new Rotation2d(angleRadians);
+
     // Convert the angle to motor rotations
     double rotations = Conversions.radiansToRotations(
       Utils.normalizeAngleRadians(angleRadians), 
@@ -419,8 +453,9 @@ public class DriveModule implements Sendable {
     driveMotor.setNeutralMode(brake ? NeutralModeValue.Brake : NeutralModeValue.Coast);
     
     // Set steering motor neutral/idle mode
-    steerConfig.idleMode(brake ? IdleMode.kBrake : IdleMode.kCoast);
-    SparkMaxFactory.applyConfig(steerMotor, steerConfig);
+    SparkMaxConfig brakeConfig = new SparkMaxConfig();
+    brakeConfig.idleMode(brake ? IdleMode.kBrake : IdleMode.kCoast);
+    SparkMaxFactory.patchConfig(steerMotor, brakeConfig);
   }
 
   /**
@@ -456,7 +491,7 @@ public class DriveModule implements Sendable {
    * @return The drive voltage in volts
    */
   public double getDriveVoltage() { 
-    return driveMotor.getMotorVoltage().getValueAsDouble(); 
+    return driveMotorVoltage.refresh().getValueAsDouble(); 
   }
 
   /**
@@ -465,6 +500,30 @@ public class DriveModule implements Sendable {
    */
   public void setDriveVoltage(double volts) {
     driveMotor.setControl(new VoltageOut(volts));
+  }
+
+  /**
+   * Gets the current steering position in radians (unwrapped)
+   * @return The steering position in radians
+   */
+  public double getSteerPositionRadians() {
+    return Conversions.rotationsToRadians(steerEncoder.getPosition(), DriveConstants.kSteerGearRatio);
+  }
+
+  /**
+   * Gets the current steering velocity in radians per second
+   * @return The steering velocity in radians per second
+   */
+  public double getSteerVelocityRadPerSec() {
+    return Conversions.rotationsToRadians(steerEncoder.getVelocity() / 60.0, DriveConstants.kSteerGearRatio);
+  }
+
+  /**
+   * Gets the current steering voltage in volts
+   * @return The steering voltage in volts
+   */
+  public double getSteerVoltage() {
+    return steerMotor.getAppliedOutput() * steerMotor.getBusVoltage();
   }
 
   /**
@@ -480,15 +539,15 @@ public class DriveModule implements Sendable {
    */
   @Override
   public void initSendable(SendableBuilder builder) {
+    builder.addDoubleProperty("Absolute Encoder (deg)", () -> Utils.showDouble(absoluteEncoder.getAngleDegrees()), null);
     builder.addDoubleProperty("Target Speed (mps)", () -> Utils.showDouble(targetState.speedMetersPerSecond), null);
     builder.addDoubleProperty("Target Angle (deg)", () -> Utils.showDouble(targetState.angle.getDegrees()), null);
-    builder.addDoubleProperty("Current Speed (mps)", () -> Utils.showDouble(getState().speedMetersPerSecond), null);
-    builder.addDoubleProperty("Current Angle (deg)", () -> Utils.showDouble(getState().angle.getDegrees()), null);
-    builder.addDoubleProperty("Absolute Encoder (deg)", () -> Utils.showDouble(absoluteEncoder.getAngleDegrees()), null);
-    builder.addDoubleProperty("Drive Voltage (V)", () -> Utils.showDouble(driveMotor.getSupplyVoltage().getValueAsDouble()), null);
-    builder.addDoubleProperty("Drive Current (A)", () -> Utils.showDouble(driveMotor.getSupplyCurrent().getValueAsDouble()), null);
-    builder.addDoubleProperty("Drive Temp (deg C)", () -> Utils.showDouble(driveMotor.getDeviceTemp().getValueAsDouble()), null);
-    builder.addDoubleProperty("Steer Voltage (V)", () -> Utils.showDouble(steerMotor.getAppliedOutput()), null);
+    builder.addDoubleProperty("Current Speed (mps)", () -> Utils.showDouble(cachedState.speedMetersPerSecond), null);
+    builder.addDoubleProperty("Current Angle (deg)", () -> Utils.showDouble(cachedState.angle.getDegrees()), null);
+    builder.addDoubleProperty("Drive Voltage (V)", () -> Utils.showDouble(driveMotorVoltage.refresh().getValueAsDouble()), null);
+    builder.addDoubleProperty("Drive Current (A)", () -> Utils.showDouble(driveSupplyCurrent.refresh().getValueAsDouble()), null);
+    builder.addDoubleProperty("Drive Temp (deg C)", () -> Utils.showDouble(driveTemp.refresh().getValueAsDouble()), null);
+    builder.addDoubleProperty("Steer Voltage (V)", () -> Utils.showDouble(getSteerVoltage()), null);
     builder.addDoubleProperty("Steer Current (A)", () -> Utils.showDouble(steerMotor.getOutputCurrent()), null);
     builder.addDoubleProperty("Steer Temp (deg C)", () -> Utils.showDouble(steerMotor.getMotorTemperature()), null);
   }

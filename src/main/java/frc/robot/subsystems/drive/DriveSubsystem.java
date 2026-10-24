@@ -172,6 +172,9 @@ public class DriveSubsystem extends SubsystemBase {
         DriveConstants.kBackRightAbsEncoderInverted
       )
     };
+    for (var module : modules) {
+      module.periodic();
+    }
 
     // Initialize swerve drive kinematics
     kinematics = new SwerveDriveKinematics(DriveConstants.kSwerveModuleTranslations);

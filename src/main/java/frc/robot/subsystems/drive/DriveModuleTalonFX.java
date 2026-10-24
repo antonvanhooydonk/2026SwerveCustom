@@ -242,9 +242,8 @@ public class DriveModuleTalonFX implements Sendable {
    */
   public void periodic() {
     // Get the current steer angle once each periodic (shared by state and position)
-    Rotation2d currentAngle = new Rotation2d(Conversions.rotationsToRadians(      
-      steerMotor.getPosition().getValueAsDouble(), 
-      DriveConstants.kSteerGearRatio
+    Rotation2d currentAngle = new Rotation2d(Utils.normalizeAngleRadians(
+      Conversions.rotationsToRadians(steerMotor.getPosition().getValueAsDouble(), DriveConstants.kSteerGearRatio)
     ));
 
     // Update cached state (avoids newing SwerveModuleState each time)
