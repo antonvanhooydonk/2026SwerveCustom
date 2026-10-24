@@ -23,7 +23,6 @@ import com.revrobotics.spark.config.SparkBaseConfig.IdleMode;
 import com.revrobotics.spark.config.SparkMaxConfig;
 import com.revrobotics.spark.FeedbackSensor;
 import com.revrobotics.spark.SparkMax;
-import com.revrobotics.spark.SparkLowLevel.MotorType;
 import com.revrobotics.spark.SparkClosedLoopController;
 
 import edu.wpi.first.math.MathUtil;
@@ -59,10 +58,6 @@ public class DriveModule implements Sendable {
   private final SparkClosedLoopController steerPIDController;
   private final RelativeEncoder steerEncoder;
   private final VelocityVoltage driveVelocityRequest;
-
-  // Cached motor configurations
-  private final TalonFXConfiguration driveConfig;
-  private final SparkMaxConfig steerConfig;
 
   // Module configuration
   private final int driveMotorID;
@@ -120,12 +115,10 @@ public class DriveModule implements Sendable {
     this.absoluteEncoderInverted = absoluteEncoderInverted;
 
     // Initialize the drive motor
-    driveMotor = new TalonFX(this.driveMotorID);
-    driveConfig = new TalonFXConfiguration();
+    driveMotor = TalonFXFactory.createMotor(this.driveMotorID, getDriveMotorConfig());
 
     // Initialize the steering motor
-    steerMotor = new SparkMax(this.steerMotorID, MotorType.kBrushless);
-    steerConfig = new SparkMaxConfig();
+    steerMotor = SparkMaxFactory.createBrushedMotor(this.steerMotorID, getSteerMotorConfig());
 
     // Initialize the absolute encoder
     absoluteEncoder = new AbsoluteEncoder(
@@ -144,12 +137,6 @@ public class DriveModule implements Sendable {
     driveMotorVoltage = driveMotor.getMotorVoltage();
     driveSupplyCurrent = driveMotor.getSupplyCurrent();
     driveTemp = driveMotor.getDeviceTemp();
-
-    // Configure drive motor
-    configureDriveMotor();
-
-    // Configure steering motor
-    configureSteerMotor();
 
     // Get the steering motor's onboard PID controller
     steerPIDController = steerMotor.getClosedLoopController();
@@ -173,17 +160,19 @@ public class DriveModule implements Sendable {
   }
 
   /**
-   * Configures the Kraken x60 drive motor.
+   * Gets the Kraken x60 drive motor configuration.
    */
-  private void configureDriveMotor() {
+  private TalonFXConfiguration getDriveMotorConfig() {
+    TalonFXConfiguration config = new TalonFXConfiguration();
+
     // Motor outputs
-    driveConfig.MotorOutput
+    config.MotorOutput
       .withDutyCycleNeutralDeadband(0.001)  // 0.1% deadband (tight control)
       .withNeutralMode(NeutralModeValue.Brake)
       .withInverted(driveMotorInverted ? InvertedValue.Clockwise_Positive : InvertedValue.CounterClockwise_Positive);
     
     // Current limits (hardcoded here for safety)
-    driveConfig.CurrentLimits
+    config.CurrentLimits
       .withSupplyCurrentLimitEnable(true)   // Enable supply limits
       .withSupplyCurrentLimit(60)                 // Peak current spike limit in Amps
       .withSupplyCurrentLowerLimit(40)       // Continuous current limit in Amps
@@ -192,13 +181,13 @@ public class DriveModule implements Sendable {
       .withStatorCurrentLimit(80);                // Max stator current in Amps (prevents overheating)
 
     // Voltage compensation
-    driveConfig.Voltage
+    config.Voltage
       .withPeakForwardVoltage(12)                   // Max voltage when running motor forward
       .withPeakReverseVoltage(-12)                                        // Max voltage when running motor in reverse
       .withSupplyVoltageTimeConstant(0.02);  // Voltage filter time constant in seconds
 
     // Velocity PID (runs on onboard motor controller, tunable in constants)
-    driveConfig.Slot0
+    config.Slot0
       .withKP(DriveConstants.kDriveKP)      // Proportional gain
       .withKI(DriveConstants.kDriveKI)      // Integral gain
       .withKD(DriveConstants.kDriveKD)      // Derivative gain
@@ -206,27 +195,18 @@ public class DriveModule implements Sendable {
       .withKV(DriveConstants.kDriveKV)      // Velocity feedforward
       .withKA(DriveConstants.kDriveKA);     // Acceleration feedforward
     
-    // Apply the configuration to the motor
-    TalonFXFactory.applyConfig(driveMotor, driveConfig);
-
-    // -------------------------------------------------------
-    // OPTIMIZE CAN STATUS FRAMES for reduced lag
-    // -------------------------------------------------------
-    // Control loop signals
-    BaseStatusSignal.setUpdateFrequencyForAll(100.0, drivePosition, driveVelocity);
-    BaseStatusSignal.setUpdateFrequencyForAll(20.0, driveMotorVoltage, driveSupplyCurrent);
-    driveTemp.setUpdateFrequency(2.0);
-
-    // MUST come last: turns off every signal not configured above
-    driveMotor.optimizeBusUtilization();
+    // return the configuration
+    return config;
   }
 
   /**
-   * Configures the Neo steering motor.
+   * Gets the Neo steering motor configuration.
    */
-  private void configureSteerMotor() {
+  private SparkMaxConfig getSteerMotorConfig() {
+    SparkMaxConfig config = new SparkMaxConfig();
+
     // Basic motor configuration (hardcoded here for safety)
-    steerConfig
+    config
       .idleMode(IdleMode.kBrake)                       // Brake mode for better control
       .inverted(steerMotorInverted)                    // Set motor inversion
       .smartCurrentLimit(25)                // Continuous current limit in Amps
@@ -234,7 +214,7 @@ public class DriveModule implements Sendable {
       .voltageCompensation(12.0);       // Enable voltage compensation at 12V
 
     // Closed-loop PID configuration (gains are tunable in constants)
-    steerConfig.closedLoop
+    config.closedLoop
       .feedbackSensor(FeedbackSensor.kPrimaryEncoder)
       .outputRange(-1.0, 1.0)
       .positionWrappingEnabled(true)      
@@ -250,24 +230,8 @@ public class DriveModule implements Sendable {
         .kV(DriveConstants.kSteerKV)
         .kA(DriveConstants.kSteerKA);
 
-    // Optimize CAN status frames for reduced lag
-    steerConfig.signals
-      // Needed every loop
-      .primaryEncoderPositionPeriodMs(10)
-      .primaryEncoderPositionAlwaysOn(true)   // valid from the first read after boot
-
-      // Not read in the control loop
-      .primaryEncoderVelocityPeriodMs(20)
-      .appliedOutputPeriodMs(100)
-      .faultsPeriodMs(250)
-
-      // Telemetry only
-      .motorTemperaturePeriodMs(500)
-      .outputCurrentPeriodMs(100)
-      .busVoltagePeriodMs(100);  
-
-    // Apply the configuration to the motor
-    SparkMaxFactory.applyConfig(steerMotor, steerConfig);
+    // return the configuration
+    return config;
   }
 
   /**
