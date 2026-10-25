@@ -35,7 +35,7 @@ public final class DriveConstants {
   public static final double kMaxAngularSpeedRadsPerSecond = Units.rotationsToRadians(1.75); // max rotational speed, conservative: 1.0 - 1.5, competitive: 1.5 - 2.0, aggressive: 2.0 - 2.5
   public static final double kSlowModeScaling = 0.25; // scaling factor for "slow mode", typically 0.25 to 0.5, adjust as needed for driver control at low speeds
 
-  public static final boolean kUseSetpointGenerator = false && Robot.isReal();
+  public static final boolean kUseSetpointGenerator = true && Robot.isReal();
 
   // ------------------------------------------------------------
   // Driver joystick settings
