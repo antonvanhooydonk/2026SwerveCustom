@@ -17,6 +17,7 @@ import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Transform3d;
 import edu.wpi.first.util.sendable.SendableBuilder;
+import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 
@@ -153,6 +154,35 @@ public class VisionSubsystem extends SubsystemBase {
   }
 
   /**
+   * Calculates measurement standard deviations (x, y, theta) for a vision estimate.
+   * Trust drops with distance squared and rises with the number of tags used.
+   */
+  private double[] calculateStandardDeviations(EstimatedRobotPose estimate) {
+    int tagCount = estimate.targetsUsed.size();
+    double distanceSq = Math.pow(averageTagDistance(estimate), 2);
+
+    // Position: scales with distance², improves with more tags
+    double xyStdDev = MathUtil.clamp(
+      VisionConstants.kLinearStdDevBaseline * distanceSq / tagCount,
+      VisionConstants.kMinXYStdDev,
+      VisionConstants.kMaxXYStdDev
+    );
+
+    // Heading: the NavX owns heading while driving. Only use multi-tag heading
+    // before the match (disabled) to help with initial alignment.
+    double thetaStdDev = VisionConstants.kIgnoredThetaStdDev;
+    if (tagCount > 1 && DriverStation.isDisabled()) {
+      thetaStdDev = Math.max(
+        VisionConstants.kAngularStdDevBaseline * distanceSq / tagCount,
+        VisionConstants.kMinThetaStdDev
+      );
+    }
+
+    // Return standard deviations as an array [xStdDev, yStdDev, thetaStdDev]
+    return new double[] { xyStdDev, xyStdDev, thetaStdDev };
+  }
+
+  /**
    * Validates a pose estimate to reject obviously incorrect measurements
    * @param estimate The estimated robot pose from the camera
    * @return True if the pose is valid
@@ -179,103 +209,53 @@ public class VisionSubsystem extends SubsystemBase {
         return false;
       }
     }
-    
+    // Check for multi-tag estimates
+    else if (averageTagDistance(estimate) > VisionConstants.kMaxDistanceMeters) {
+      return false;
+    }
+
     // Get the 2D pose for boundary checks
     Pose2d pose2d = estimate.estimatedPose.toPose2d();
-    
+
     // Check if pose is within field boundaries
     if (!isPoseOnField(pose2d)) {
       return false;
     }
-    
+
     // Check Z coordinate (robot should be on the ground)
     double z = estimate.estimatedPose.getZ();
     if (Math.abs(z) > VisionConstants.kZMargin) {
       return false;
     }
-    
+
     // If we reach here, the pose is considered valid
     return true;
   }
 
-  /**
-   * Calculate standard deviations based on target quality
-   * @param estimate The estimated robot pose to calculate standard deviations for
-   * @return Array of standard deviations for x, y, and theta
+  /** 
+   * Average camera-to-tag distance (m) across the tags used in this estimate. 
    */
-  private double[] calculateStandardDeviations(EstimatedRobotPose estimate) {
-    // Get the list of targets used in the estimate
-    List<PhotonTrackedTarget> targetsUsed = estimate.targetsUsed;
-
-    // Get the number of targets used in the estimate
-    int numTargets = targetsUsed.size();
-
-    // Calculate average distance to targets, clamped to max distance
-    double avgDistance = targetsUsed.stream()
-      .mapToDouble(t -> {
-        var transform = t.getBestCameraToTarget();
-        return transform != null
-          ? transform.getTranslation().getNorm()
-          : VisionConstants.kMaxDistanceMeters;
-      })
+  private static double averageTagDistance(EstimatedRobotPose estimate) {
+    return estimate.targetsUsed.stream()
+      .mapToDouble(t -> t.getBestCameraToTarget().getTranslation().getNorm())
       .average()
       .orElse(VisionConstants.kMaxDistanceMeters);
+  }
 
-    // Clamp average distance to max distance to avoid extreme std dev scaling
-    avgDistance = Math.min(avgDistance, VisionConstants.kMaxDistanceMeters);
-
-    // Calculate average ambiguity of all targets used
-    double avgAmbiguity = targetsUsed.stream()
-      .mapToDouble(PhotonTrackedTarget::getPoseAmbiguity)
-      .average()
-      .orElse(0.0);
-
-    // ------------------------------------------------------------------------
-    // Calculate XY standard deviation
-    // ------------------------------------------------------------------------
-    // Determine base XY standard deviation based on number of targets
-    double baseXY = (numTargets == 1)
-      ? VisionConstants.kSingleTagBaseXYstdDev
-      : VisionConstants.kMultiTagBaseXYstdDev;
-
-    // XY: scale with distance, tag count, and ambiguity
-    double xyStdDev = baseXY * (1.0 + (avgDistance * avgDistance / 20.0)) / Math.sqrt(numTargets);
-
-    // Increase XY std dev if ambiguity is high
-    if (avgAmbiguity > 0.05) {
-      xyStdDev *= 1.0 + (avgAmbiguity * 5.0);
+  /**
+   * Check if a given pose is within the field boundaries
+   * @param pose The pose to check
+   * @return True if the pose is on the field
+   */
+  private boolean isPoseOnField(Pose2d pose) {
+    if (pose == null) {
+      return false;
     }
-
-    // Clamp XY std dev to reasonable bounds to avoid extreme values
-    xyStdDev = MathUtil.clamp(xyStdDev, 0.01, 1.5);
-
-    // ------------------------------------------------------------------------
-    // Calculate Theta standard deviation
-    // ------------------------------------------------------------------------
-    // ignore single-tag heading entirely, trust multi-tag only modestly
-    double thetaStdDev;
-
-    if (numTargets == 1) {
-      // Single-tag heading is ignored
-      thetaStdDev = VisionConstants.kIgnoredThetaStdDev;
-    } 
-    else {
-      // Multi-tag heading is more reliable, but still scales with distance and ambiguity
-      thetaStdDev = VisionConstants.kMultiTagBaseThetaStdDev
-        * (1.0 + (avgDistance * avgDistance / 40.0))
-        / Math.sqrt(numTargets);
-
-      // Increase theta std dev if ambiguity is high
-      if (avgAmbiguity > 0.05) {
-        thetaStdDev *= 1.0 + (avgAmbiguity * 5.0);
-      }
-
-      // Ensure theta std dev does not go below the minimum threshold
-      thetaStdDev = Math.max(thetaStdDev, VisionConstants.kMinThetaStdDev);
-    }
-
-    // Return the calculated standard deviations for x, y, and theta
-    return new double[] { xyStdDev, xyStdDev, thetaStdDev };
+    
+    return pose.getX() >= -VisionConstants.kFieldBorderMargin && 
+           pose.getX() <= FieldConstants.kFieldLengthMeters + VisionConstants.kFieldBorderMargin &&
+           pose.getY() >= -VisionConstants.kFieldBorderMargin && 
+           pose.getY() <= FieldConstants.kFieldWidthMeters + VisionConstants.kFieldBorderMargin;
   }
 
   // ==================== Public state accessors ====================
@@ -286,22 +266,6 @@ public class VisionSubsystem extends SubsystemBase {
    */
   public boolean isEnabled() {
     return !cameras.isEmpty() && VisionConstants.kEnableVision;
-  }
-
-  /**
-   * Check if a given pose is within the field boundaries
-   * @param pose The pose to check
-   * @return True if the pose is on the field
-   */
-  public boolean isPoseOnField(Pose2d pose) {
-    if (pose == null) {
-      return false;
-    }
-    
-    return pose.getX() >= -VisionConstants.kFieldBorderMargin && 
-           pose.getX() <= FieldConstants.kFieldLengthMeters + VisionConstants.kFieldBorderMargin &&
-           pose.getY() >= -VisionConstants.kFieldBorderMargin && 
-           pose.getY() <= FieldConstants.kFieldWidthMeters + VisionConstants.kFieldBorderMargin;
   }
 
   /**
