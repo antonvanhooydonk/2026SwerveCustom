@@ -74,7 +74,7 @@ public class Robot extends TimedRobot {
   public void autonomousExit() {
     // If an autonomous command is running, cancel it now
     if (m_autonomousCommand != null) {
-      CommandScheduler.getInstance().cancel(m_autonomousCommand);
+      m_autonomousCommand.cancel();
     }
   }
 
