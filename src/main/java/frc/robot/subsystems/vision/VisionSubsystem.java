@@ -112,7 +112,7 @@ public class VisionSubsystem extends SubsystemBase {
         // Process ALL cached unread results
         for (PhotonPipelineResult result : camera.getCachedResults()) {
           // Skip further processing if result has no targets
-          if (!result.hasTargets())  {
+          if (!result.hasTargets()) {
             continue;
           }
           
