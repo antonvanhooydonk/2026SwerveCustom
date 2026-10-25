@@ -311,24 +311,24 @@ public class DriveSubsystem extends SubsystemBase {
 
     // Set each swerve module state directly from the next calculated setpoint
     for (int i = 0; i < 4; i++) {
-      Rotation2d current = modules[i].getState().angle;
+      Rotation2d currentAngle = modules[i].getState().angle;
       SwerveModuleState s = desiredStates[i];
 
       // Determine if the voltage sign should be flipped based on the angle difference. 
       // If the angle difference is greater than 90 degrees, flip the voltage sign.
       // Must be done before calling optimize() since optimize() may change the 
       // angle to be more than 90 degrees away from the current angle.
-      boolean flipped = Math.abs(s.angle.minus(current).getDegrees()) > 90.0;
+      boolean flipped = Math.abs(s.angle.minus(currentAngle).getDegrees()) > 90.0;
 
       // Optimize the desired state to minimize rotation and avoid unnecessary wheel spinning
-      s.optimize(current);
+      s.optimize(currentAngle);
 
       // Scale the speed by the cosine of the angle difference to reduce  
       // speed when the wheel is not aligned with the desired direction
-      s.cosineScale(current);
+      s.cosineScale(currentAngle);
 
       // Feedforward follows the same desaturation, flip, and cosine scaling as the speed
-      double scale = desatScale * (flipped ? -1.0 : 1.0) * s.angle.minus(current).getCos();
+      double scale = desatScale * (flipped ? -1.0 : 1.0) * s.angle.minus(currentAngle).getCos();
 
       // Set the desired state and feedforward for the current module, 
       // applying the calculated scale to the feedforward force
