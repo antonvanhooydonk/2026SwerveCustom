@@ -456,6 +456,11 @@ public class DriveSubsystem extends SubsystemBase {
    * facing away from its driver station, as at the start of a match.
    */
   public void seedHeadingForAlliance() {
+    // Don't seed (or cache the alliance) until the gyro angle is stable
+    if (!gyro.isReady()) {
+      return;
+    }
+    
     Optional<Alliance> alliance = DriverStation.getAlliance();
     if (alliance.isEmpty() || alliance.equals(seededAlliance)) {
       return;
@@ -549,7 +554,7 @@ public class DriveSubsystem extends SubsystemBase {
    * @return True if the gyro is connected and functional, false otherwise
    */
   private boolean isGyroConnected() {
-    return gyro != null && gyro.isConnected();
+    return gyro != null && gyro.isReady();
   }
 
   /**
