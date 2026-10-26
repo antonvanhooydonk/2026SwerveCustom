@@ -182,7 +182,7 @@ public final class DriveConstants {
   // 2. Start with feedforward only (kP = 0)
   // 3. Add minimal P gain if needed (usually 0.05 - 0.2)
   // 4. Avoid I and D unless absolutely necessary
-  public static final double kDriveKP = 0.1;    // 0.05 usually 0.05 - 0.2
+  public static final double kDriveKP = 0.1;    // usually 0.05 - 0.2
   public static final double kDriveKI = 0.0;
   public static final double kDriveKD = 0.0;
   public static final double kDriveKS = 0.06;   // Static friction usually 0.05 to 0.10
