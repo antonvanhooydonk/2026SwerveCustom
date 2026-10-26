@@ -152,9 +152,9 @@ public class DriveModule implements Sendable {
     resetEncoders();
 
     // Initialize cached state & position
-    targetState = new SwerveModuleState(0.0, new Rotation2d());
-    cachedState = new SwerveModuleState(0.0, new Rotation2d());
-    cachedPosition = new SwerveModulePosition(0.0, new Rotation2d());
+    targetState = new SwerveModuleState(0.0, Rotation2d.kZero);
+    cachedState = new SwerveModuleState(0.0, Rotation2d.kZero);
+    cachedPosition = new SwerveModulePosition(0.0, Rotation2d.kZero);
 
     // Initialize dashboard values
     SmartDashboard.putData("Drive/Modules/" + this.moduleName, this);
@@ -246,7 +246,7 @@ public class DriveModule implements Sendable {
    */
   public void periodic() {
     // Get the current steer angle once each periodic (shared by state and position)
-    Rotation2d currentAngle = new Rotation2d(getSteerAngleRadians());
+    Rotation2d currentAngle = Rotation2d.fromRadians(getSteerAngleRadians());
 
     // Refresh the drive motor status signals (avoids newing StatusSignal each time)
     BaseStatusSignal.refreshAll(drivePosition, driveVelocity);
@@ -422,7 +422,7 @@ public class DriveModule implements Sendable {
     }
     
     // Update the target state for telemetry
-    targetState.angle = new Rotation2d(angleRadians);
+    targetState.angle = Rotation2d.fromRadians(angleRadians);
 
     // Convert the angle to motor rotations
     double rotations = Conversions.radiansToRotations(
