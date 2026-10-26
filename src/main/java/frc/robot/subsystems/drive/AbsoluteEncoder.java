@@ -10,7 +10,6 @@ import edu.wpi.first.util.sendable.Sendable;
 import edu.wpi.first.util.sendable.SendableBuilder;
 import edu.wpi.first.wpilibj.AnalogInput;
 import edu.wpi.first.wpilibj.AnalogEncoder;
-import edu.wpi.first.wpilibj.RobotController;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 
 import frc.robot.util.Utils;
@@ -117,7 +116,7 @@ public class AbsoluteEncoder implements Sendable {
   }
   
   /**
-   * Gets the current raw angle in radians from the analog input.
+   * Gets the current raw angle in radians (no offset) from the analog encoder.
    * Use this value directly for setting the module offsets in DriveConstants.
    * @return Raw angle in radians (-π to π) 
    */
@@ -130,7 +129,7 @@ public class AbsoluteEncoder implements Sendable {
   }
   
   /**
-   * Gets the current raw angle (no offset) in degrees from the analog input.
+   * Gets the current raw angle (no offset) in degrees from the analog encoder.
    * Use this value with Units.degreesToRadians(value) for setting the
    * module offsets in DriveConstants.
    * @return Raw angle in degrees
@@ -140,11 +139,10 @@ public class AbsoluteEncoder implements Sendable {
   }
   
   /**
-   * Gets the absolute position (0 to 1.0 rotations).
-   * This method does not apply the internal offset.
+   * Gets the absolute position (0 to 1.0 rotations) with no offset applied.
    * @return Position as fraction of full rotation
    */
-  public double getAbsolutePosition() {
+  public double getPosition() {
     return analogEncoder.get();
   }
   
@@ -217,13 +215,12 @@ public class AbsoluteEncoder implements Sendable {
    */
   @Override
   public void initSendable(SendableBuilder builder) {
-    builder.addDoubleProperty("Absolute Position", () -> Utils.showDouble(getAbsolutePosition()), null);
+    builder.addDoubleProperty("Position", () -> Utils.showDouble(getPosition()), null);
     builder.addDoubleProperty("Angle (deg)", () -> Utils.showDouble(getAngleDegrees()), null);
     builder.addDoubleProperty("Angle (rad)", () -> Utils.showDouble(getAngleRadians()), null);
     builder.addDoubleProperty("Raw Angle (deg)", () -> Utils.showDouble(getRawAngleDegrees()), null);
     builder.addDoubleProperty("Raw Angle (rad)", () -> Utils.showDouble(getRawAngleRadians()), null);
     builder.addDoubleProperty("Raw Voltage", () -> Utils.showDouble(getRawVoltage()), null);
-    builder.addDoubleProperty("Supply Voltage", () -> Utils.showDouble(RobotController.getVoltage5V()), null);
     builder.addBooleanProperty("Valid", this::isValid, null);
     builder.addBooleanProperty("Inverted", this::isInverted, null);
     builder.addIntegerProperty("Noise Count", this::getNoiseCount, null);
