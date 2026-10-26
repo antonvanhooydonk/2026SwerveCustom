@@ -291,7 +291,7 @@ public class DriveModule implements Sendable {
       Math.abs(errorRad) > Units.degreesToRadians(10)
     ) {
       if (++driftLoops >= 25) { 
-        resetSteerEncoders();
+        resetSteerEncoder();
         driftLoops = 0;
       }
     } else {
@@ -304,14 +304,14 @@ public class DriveModule implements Sendable {
    */
   public void resetEncoders() {
     driveMotor.setPosition(0);
-    resetSteerEncoders();
+    resetSteerEncoder();
   }
 
   /**
    * Resets the steer encoder.
    * Steer encoder is synchronized to the absolute encoder.
    */
-  public void resetSteerEncoders() {
+  public void resetSteerEncoder() {
     steerEncoder.setPosition(Conversions.radiansToRotations(
       absoluteEncoder.getAngleRadians(), 
       DriveConstants.kSteerGearRatio
