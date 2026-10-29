@@ -97,7 +97,9 @@ public class Navx2Gyro implements Sendable {
     calibrationAlert.set(calibrationTimedOut && calibrating);
   }
 
-  /** True while the NavX is still calibrating. */
+  /** 
+   * True while the NavX is still calibrating. 
+   */
   public boolean isCalibrating() {
     if (RobotBase.isSimulation()) {
       return false;
@@ -105,7 +107,9 @@ public class Navx2Gyro implements Sendable {
     return gyro.isCalibrating();
   }
 
-  /** True when the gyro is connected and finished calibrating, so its angle can be trusted. */
+  /** 
+   * True when the gyro is connected and finished calibrating, so its angle can be trusted.
+   */
   public boolean isReady() {
     if (RobotBase.isSimulation()) {
       return true;
