@@ -1035,7 +1035,7 @@ public class DriveSubsystem extends SubsystemBase {
    * @param pathName The name of the PathPlanner path to find then follow (without the .path extension)
    * @return Command to find then follow the specified PathPlanner path
    */
-  public Command pathfindThenFollowPath(String pathName) {
+  public Command pathfindThenFollowPathCommand(String pathName) {
     try {
       // use the staging constraints for the pathfinding portion, 
       // then follow the path with its own constraints
