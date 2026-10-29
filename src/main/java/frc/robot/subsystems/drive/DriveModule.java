@@ -5,6 +5,8 @@
 package frc.robot.subsystems.drive;
 
 import com.ctre.phoenix6.hardware.TalonFX;
+import com.ctre.phoenix6.sim.ChassisReference;
+import com.ctre.phoenix6.sim.TalonFXSimState;
 import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
 
@@ -24,9 +26,12 @@ import com.revrobotics.spark.config.SparkMaxConfig;
 import com.revrobotics.spark.FeedbackSensor;
 import com.revrobotics.spark.SparkMax;
 import com.revrobotics.spark.SparkClosedLoopController;
+import com.revrobotics.sim.SparkMaxSim;
 
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.system.plant.DCMotor;
+import edu.wpi.first.math.system.plant.LinearSystemId;
 import edu.wpi.first.math.kinematics.SwerveModulePosition;
 import edu.wpi.first.math.kinematics.SwerveModuleState;
 import edu.wpi.first.math.util.Units;
@@ -38,6 +43,9 @@ import edu.wpi.first.units.measure.Temperature;
 import edu.wpi.first.units.measure.Voltage;
 import edu.wpi.first.util.sendable.Sendable;
 import edu.wpi.first.util.sendable.SendableBuilder;
+import edu.wpi.first.wpilibj.RobotBase;
+import edu.wpi.first.wpilibj.RobotController;
+import edu.wpi.first.wpilibj.simulation.DCMotorSim;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 
 import frc.robot.util.Conversions;
@@ -76,6 +84,12 @@ public class DriveModule implements Sendable {
 
   // Target state (used for telemetry only)
   private SwerveModuleState targetState;
+
+  // Simulation objects (null on a real robot)
+  private TalonFXSimState driveMotorSim;   // lets us feed the Kraken's simulated rotor state
+  private SparkMaxSim steerMotorSim;       // lets us feed the NEO's simulated encoder state
+  private DCMotorSim driveWheelSim;        // physics of the drive wheel
+  private DCMotorSim steerAssemblySim;        // physics of the steering assembly
 
   // Counter for encoder drift detection
   private int driftLoops = 0;
@@ -155,6 +169,11 @@ public class DriveModule implements Sendable {
     targetState = new SwerveModuleState(0.0, Rotation2d.kZero);
     cachedState = new SwerveModuleState(0.0, Rotation2d.kZero);
     cachedPosition = new SwerveModulePosition(0.0, Rotation2d.kZero);
+
+    // Initialize simulation if running in simulation mode
+    if (RobotBase.isSimulation()) {
+      initSimulation();
+    }
 
     // Initialize dashboard values
     SmartDashboard.putData("Drive/Modules/" + this.moduleName, this);
@@ -242,6 +261,40 @@ public class DriveModule implements Sendable {
   }
 
   /**
+   * Creates the physics models for this module and points them at the simulated
+   * motor controllers. The real TalonFX / SparkMax control code keeps running 
+   * unchanged. The physics models just play the part of the motor, gearbox and wheel.
+   */
+  private void initSimulation() {
+    // --- Drive: Kraken X60 -> gearbox -> wheel (with 1/4 of the robot's mass reflected to it)
+    DCMotor kraken = DCMotor.getKrakenX60(1);
+    driveWheelSim = new DCMotorSim(
+      LinearSystemId.createDCMotorSystem(kraken, DriveConstants.kSimDriveMOI, DriveConstants.kDriveGearRatio),
+      kraken
+    );
+    driveMotorSim = driveMotor.getSimState();
+
+    // Match this to the InvertedValue in getDriveMotorConfig(). Phoenix applies the 
+    // configured inversion itself; this only describes how the motor is mounted.
+    driveMotorSim.Orientation = ChassisReference.CounterClockwise_Positive;
+
+    // --- Steer: NEO -> gearbox -> module casing
+    DCMotor neo = DCMotor.getNEO(1);
+    steerAssemblySim = new DCMotorSim(
+      LinearSystemId.createDCMotorSystem(neo, DriveConstants.kSimSteerMOI, DriveConstants.kSteerGearRatio),
+      neo
+    );
+    steerMotorSim = new SparkMaxSim(steerMotor, neo);
+
+    // Start with the wheel pointing straight ahead and every sensor agreeing about it
+    driveWheelSim.setState(0.0, 0.0);
+    steerAssemblySim.setState(0.0, 0.0);
+    absoluteEncoder.setSimulatedAngleRadians(0.0);
+    steerMotorSim.setPosition(0.0);
+    resetEncoders();
+  }
+
+  /**
    * Called by the drive subsystem's periodic() method
    */
   public void periodic() {
@@ -272,6 +325,56 @@ public class DriveModule implements Sendable {
 
     // Check for encoder drift and reset if necessary
     checkEncoderDrift();
+  }
+
+  /**
+   * SIMULATION ONLY: Advances this module's physics by one loop.
+   * Called by the drive subsystem's simulationPeriodic() method.
+   * @param dtSeconds Time step in seconds
+   */
+  public void simulationPeriodic(double dtSeconds) {
+    double batteryVolts = RobotController.getBatteryVoltage();
+
+    // ---- Drive wheel ----
+    // 1. Tell the simulated TalonFX what the battery is doing
+    driveMotorSim.setSupplyVoltage(batteryVolts);
+
+    // 2. Feed the voltage the real velocity controller chose into the physics
+    driveWheelSim.setInputVoltage(driveMotorSim.getMotorVoltage());
+    driveWheelSim.update(dtSeconds);
+
+    // 3. Write the physics result back as rotor position & velocity (motor rotations)
+    driveMotorSim.setRawRotorPosition(Conversions.radiansToRotations(
+      driveWheelSim.getAngularPositionRad(), 
+      DriveConstants.kDriveGearRatio
+    ));
+    driveMotorSim.setRotorVelocity(Conversions.radiansToRotations(
+      driveWheelSim.getAngularVelocityRadPerSec(), 
+      DriveConstants.kDriveGearRatio
+    ));
+
+    // ---- Steering ----
+    // 1. Feed the voltage the SparkMax's closed-loop controller chose into the physics
+    steerAssemblySim.setInputVoltage(steerMotorSim.getAppliedOutput() * batteryVolts);
+    steerAssemblySim.update(dtSeconds);
+
+    // 2. Write the physics result back as encoder position & velocity. The SparkMax 
+    //    reports velocity in motor RPM, so multiply the output shaft speed by the gear ratio.
+    double steerMotorRPM = Units.radiansPerSecondToRotationsPerMinute(
+      steerAssemblySim.getAngularVelocityRadPerSec() * DriveConstants.kSteerGearRatio
+    );
+    steerMotorSim.iterate(steerMotorRPM, batteryVolts, dtSeconds);
+
+    // 3. iterate() integrates its own position, so re-sync it with the physics model.
+    //    This stops the relative encoder and absolute encoder from slowly disagreeing, 
+    //    which would otherwise trigger checkEncoderDrift().
+    steerMotorSim.setPosition(Conversions.radiansToRotations(
+      steerAssemblySim.getAngularPositionRad(), 
+      DriveConstants.kSteerGearRatio
+    ));
+
+    // 4. The absolute encoder always reports the true angle of the module
+    absoluteEncoder.setSimulatedAngleRadians(steerAssemblySim.getAngularPositionRad());
   }
 
   /**

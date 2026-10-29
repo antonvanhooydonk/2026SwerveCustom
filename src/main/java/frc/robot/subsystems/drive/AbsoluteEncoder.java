@@ -4,12 +4,16 @@
 
 package frc.robot.subsystems.drive;
 
+import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.util.sendable.Sendable;
 import edu.wpi.first.util.sendable.SendableBuilder;
 import edu.wpi.first.wpilibj.AnalogInput;
 import edu.wpi.first.wpilibj.AnalogEncoder;
+import edu.wpi.first.wpilibj.RobotController;
+import edu.wpi.first.wpilibj.simulation.AnalogEncoderSim;
+import edu.wpi.first.wpilibj.simulation.AnalogInputSim;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 
 import frc.robot.util.Utils;
@@ -31,6 +35,10 @@ public class AbsoluteEncoder implements Sendable {
   // Voltage thresholds for diagnostics
   private final double VOLTAGE_NOISE_THRESHOLD = 0.1;
   
+  // Simulation handles (null on a real robot)
+  private AnalogEncoderSim analogEncoderSim;
+  private AnalogInputSim analogInputSim;
+
   // Previous reading for noise detection
   private double previousVoltage = 0.0;
   private int noiseCount = 0;
@@ -73,6 +81,27 @@ public class AbsoluteEncoder implements Sendable {
     
     // Update previous voltage for next cycle
     previousVoltage = currentVoltage;
+  }
+
+  /**
+   * SIMULATION ONLY: Makes this encoder read back the given steer angle, applying
+   * the inverse of the offset and inversion used by getAngleRadians().
+   * @param angleRadians The true module angle in radians (0 = wheel pointing forward)
+   */
+  public void setSimulatedAngleRadians(double angleRadians) {
+    // Create simulation handles if they don't exist yet
+    if (analogEncoderSim == null) {
+      analogEncoderSim = new AnalogEncoderSim(analogEncoder);
+      analogInputSim = new AnalogInputSim(analogInput);
+    }
+
+    // Inverse of getAngleRadians(): angle = (inverted ? -raw : raw) - offset
+    double signed = angleRadians + offsetRadians;
+    double rawRadians = inverted ? -signed : signed;
+    double rawRotations = MathUtil.inputModulus(rawRadians / (2.0 * Math.PI), 0.0, 1.0);
+
+    analogEncoderSim.set(rawRotations);
+    analogInputSim.setVoltage(rawRotations * RobotController.getVoltage5V());
   }
 
   /**

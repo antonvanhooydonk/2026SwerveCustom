@@ -15,6 +15,7 @@ import edu.wpi.first.util.sendable.Sendable;
 import edu.wpi.first.util.sendable.SendableBuilder;
 import edu.wpi.first.wpilibj.Alert;
 import edu.wpi.first.wpilibj.Alert.AlertType;
+import edu.wpi.first.wpilibj.RobotBase;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 
@@ -37,6 +38,10 @@ public class Navx2Gyro implements Sendable {
   private final Alert calibrationAlert = new Alert("NavX calibration timed out at boot. Heading may be bad.", AlertType.kError);
   private final Alert magAlert = new Alert("NavX magnetometer not calibrated.", AlertType.kWarning);
   
+  // Simulated heading (CCW positive). Only used when running in simulation, since the
+  // real AHRS has no physical robot to measure there.
+  private Rotation2d simAngle = Rotation2d.kZero;
+
   // Debounce so a single dropped SPI frame doesn't flash an error
   private final Debouncer disconnectDebouncer = new Debouncer(0.25, DebounceType.kRising);
 
@@ -58,6 +63,11 @@ public class Navx2Gyro implements Sendable {
    * Periodic method to be called by drive subsystem's periodic
    */
   public void periodic() {
+    // The simulated gyro is always connected and calibrated
+    if (RobotBase.isSimulation()) {
+      return;
+    }
+
     boolean connected = gyro.isConnected();
     boolean calibrating = gyro.isCalibrating();
 
@@ -89,11 +99,17 @@ public class Navx2Gyro implements Sendable {
 
   /** True while the NavX is still calibrating. */
   public boolean isCalibrating() {
+    if (RobotBase.isSimulation()) {
+      return false;
+    }
     return gyro.isCalibrating();
   }
 
   /** True when the gyro is connected and finished calibrating, so its angle can be trusted. */
   public boolean isReady() {
+    if (RobotBase.isSimulation()) {
+      return true;
+    }
     return gyro.isConnected() && !gyro.isCalibrating();
   }
 
@@ -105,6 +121,9 @@ public class Navx2Gyro implements Sendable {
    * @return The current gyro angle as a Rotation2d, CCW positive
    */
   public Rotation2d getAngle() {
+    if (RobotBase.isSimulation()) {
+      return simAngle;
+    }
     return gyro.getRotation2d();
   }
 
@@ -125,18 +144,34 @@ public class Navx2Gyro implements Sendable {
   }
   
   /**
-   * Gets the current yaw of the robot
-   * @return Current yaw in degrees -180 to 180
+   * Gets the current yaw of the robot, CCW positive like getAngle().
+   * Unlike getAngle(), this does not include the angle adjustment 
+   * or accumulate past +/-180 degrees.
+   * @return Current yaw in degrees -180 to 180, CCW positive
    */
   public double getYaw() {
-    return gyro.getYaw();
+    if (RobotBase.isSimulation()) {
+      return simAngle.getDegrees();
+    }
+    return -gyro.getYaw();
   }
 
   /**
    * Resets the gyro to zero and clears internal offset.
    */
   public void reset() {
+    simAngle = Rotation2d.kZero;
     gyro.reset();
+  }
+
+  /**
+   * SIMULATION ONLY: Integrates the robot's true angular velocity into the simulated heading.
+   * Call once per loop from the drive subsystem's simulationPeriodic().
+   * @param omegaRadPerSec Robot angular velocity, CCW positive
+   * @param dtSeconds Time step in seconds
+   */
+  public void simulate(double omegaRadPerSec, double dtSeconds) {
+    simAngle = simAngle.plus(Rotation2d.fromRadians(omegaRadPerSec * dtSeconds));
   }
 
   /**

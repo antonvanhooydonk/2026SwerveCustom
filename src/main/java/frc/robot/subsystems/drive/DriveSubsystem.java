@@ -36,6 +36,7 @@ import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Transform2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.kinematics.SwerveDriveKinematics;
+import edu.wpi.first.math.kinematics.SwerveDriveOdometry;
 import edu.wpi.first.math.kinematics.SwerveModulePosition;
 import edu.wpi.first.math.kinematics.SwerveModuleState;
 import edu.wpi.first.units.measure.Force;
@@ -85,6 +86,11 @@ public class DriveSubsystem extends SubsystemBase {
 
   // Field visualization
   private final Field2d field2d = new Field2d();
+
+  // Simulation only: wheel-only odometry that ignores vision. In simulation the wheels roll
+  // perfectly without slip, so this is the robot's "true" pose. Compare it against the pose 
+  // estimator to see how much vision corrections are moving you, or feed it to a vision sim.
+  private SwerveDriveOdometry simTruthOdometry;
 
   // Cached zero feedforward for when the input speeds are invalid or feedforwards are unusable
   private static final DriveFeedforwards kZeroFeedforwards = DriveFeedforwards.zeros(4);
@@ -229,6 +235,11 @@ public class DriveSubsystem extends SubsystemBase {
       )
     );
 
+    // Simulation: start the "true" pose tracker at the same place as the estimator
+    if (RobotBase.isSimulation()) {
+      simTruthOdometry = new SwerveDriveOdometry(kinematics, gyro.getAngle(), getModulePositions(), getPose());
+    }
+
     // Add data to dashboard
     SmartDashboard.putData("Drive", this);
     SmartDashboard.putData("Drive/Field", field2d);
@@ -254,6 +265,36 @@ public class DriveSubsystem extends SubsystemBase {
         
     // Update field visualization
     field2d.setRobotPose(getPose());
+
+    // Simulation: track the true pose (no vision) and show it on the field
+    if (simTruthOdometry != null) {
+      simTruthOdometry.update(gyro.getAngle(), getModulePositions());
+      field2d.getObject("SimTruth").setPose(simTruthOdometry.getPoseMeters());
+    }
+  }
+
+  @Override
+  public void simulationPeriodic() {
+    // Advance every module's motor/wheel physics. The real controllers (TalonFX velocity 
+    // loop, SparkMax position loop) have already issued their commands in periodic()/commands.
+    for (var module : modules) {
+      module.simulationPeriodic(DriveConstants.kPeriodicTimeSeconds);
+    }
+
+    // There is no real gyro in simulation, so derive the robot's rotation from how fast the 
+    // simulated wheels are actually moving, and integrate it into the simulated heading.
+    ChassisSpeeds actualSpeeds = kinematics.toChassisSpeeds(getModuleStates());
+    gyro.simulate(actualSpeeds.omegaRadiansPerSecond, DriveConstants.kPeriodicTimeSeconds);
+  }
+
+  /**
+   * SIMULATION ONLY: Gets the robot's true pose, from wheel odometry that ignores vision.
+   * Feed this to a vision simulation (e.g. PhotonVision's VisionSystemSim) so simulated 
+   * cameras "see" from where the robot really is, not where the estimator thinks it is.
+   * @return The true pose, or the estimated pose when running on a real robot
+   */
+  public Pose2d getSimTruthPose() {
+    return simTruthOdometry != null ? simTruthOdometry.getPoseMeters() : getPose();
   }
 
   // ----------------------------------------------------------------------------------------
@@ -426,11 +467,13 @@ public class DriveSubsystem extends SubsystemBase {
    * NOTE: Should never need to call this if vision is working properly.
    */
   private void resetOdometry(Pose2d pose) {
-    poseEstimator.resetPosition(
-      gyro.getAngle(), 
-      getModulePositions(), 
-      pose == null ? getSeedPose() : pose
-    );
+    Pose2d target = pose == null ? getSeedPose() : pose;
+    poseEstimator.resetPosition(gyro.getAngle(), getModulePositions(), target);
+
+    // In simulation there is no other way to place the robot, so teleport the true pose too
+    if (simTruthOdometry != null) {
+      simTruthOdometry.resetPosition(gyro.getAngle(), getModulePositions(), target);
+    }
   }
 
   /**

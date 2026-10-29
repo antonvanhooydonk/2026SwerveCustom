@@ -1,0 +1,410 @@
+diff --git a/src/main/java/frc/robot/subsystems/drive/AbsoluteEncoder.java b/src/main/java/frc/robot/subsystems/drive/AbsoluteEncoder.java
+index aec116a..6fdc8cd 100644
+--- a/src/main/java/frc/robot/subsystems/drive/AbsoluteEncoder.java
++++ b/src/main/java/frc/robot/subsystems/drive/AbsoluteEncoder.java
+@@ -4,12 +4,16 @@
+ 
+ package frc.robot.subsystems.drive;
+ 
++import edu.wpi.first.math.MathUtil;
+ import edu.wpi.first.math.geometry.Rotation2d;
+ import edu.wpi.first.math.util.Units;
+ import edu.wpi.first.util.sendable.Sendable;
+ import edu.wpi.first.util.sendable.SendableBuilder;
+ import edu.wpi.first.wpilibj.AnalogInput;
+ import edu.wpi.first.wpilibj.AnalogEncoder;
++import edu.wpi.first.wpilibj.RobotController;
++import edu.wpi.first.wpilibj.simulation.AnalogEncoderSim;
++import edu.wpi.first.wpilibj.simulation.AnalogInputSim;
+ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
+ 
+ import frc.robot.util.Utils;
+@@ -31,6 +35,10 @@ public class AbsoluteEncoder implements Sendable {
+   // Voltage thresholds for diagnostics
+   private final double VOLTAGE_NOISE_THRESHOLD = 0.1;
+   
++  // Simulation handles (null on a real robot)
++  private AnalogEncoderSim analogEncoderSim;
++  private AnalogInputSim analogInputSim;
++
+   // Previous reading for noise detection
+   private double previousVoltage = 0.0;
+   private int noiseCount = 0;
+@@ -75,6 +83,26 @@ public class AbsoluteEncoder implements Sendable {
+     previousVoltage = currentVoltage;
+   }
+ 
++  /**
++   * SIMULATION ONLY: Makes this encoder read back the given steer angle, applying
++   * the inverse of the offset and inversion used by getAngleRadians().
++   * @param angleRadians The true module angle in radians (0 = wheel pointing forward)
++   */
++  public void setSimulatedAngleRadians(double angleRadians) {
++    if (analogEncoderSim == null) {
++      analogEncoderSim = new AnalogEncoderSim(analogEncoder);
++      analogInputSim = new AnalogInputSim(analogInput);
++    }
++
++    // Inverse of getAngleRadians(): angle = (inverted ? -raw : raw) - offset
++    double signed = angleRadians + offsetRadians;
++    double rawRadians = inverted ? -signed : signed;
++    double rawRotations = MathUtil.inputModulus(rawRadians / (2.0 * Math.PI), 0.0, 1.0);
++
++    analogEncoderSim.setTurns(rawRotations);
++    analogInputSim.setVoltage(rawRotations * RobotController.getVoltage5V());
++  }
++
+   /**
+    * Gets the current angle in radians using AnalogEncoder.
+    * The current offset and inversion are applied if configured.
+diff --git a/src/main/java/frc/robot/subsystems/drive/DriveConstants.java b/src/main/java/frc/robot/subsystems/drive/DriveConstants.java
+index bcf1053..d98a023 100644
+--- a/src/main/java/frc/robot/subsystems/drive/DriveConstants.java
++++ b/src/main/java/frc/robot/subsystems/drive/DriveConstants.java
+@@ -95,6 +95,8 @@ public final class DriveConstants {
+   public static final double kWheelCOF = 1.19; // could try 1.0 to 1.3, coefficient of friction of wheel on carpet
+   public static final double kRobotMassKg = Units.lbsToKilograms(134);
+   public static final double kRobotMOI = (1.0 / 12.0) * kRobotMassKg * ((kTrackWidthMeters * kTrackWidthMeters) + (kWheelBaseMeters * kWheelBaseMeters)); // kg m^2, moment of inertia about center of robot
++  public static final double kSimDriveMOI = (kRobotMassKg / 4.0) * kWheelRadiusMeters * kWheelRadiusMeters; // kg m^2, simulation only: 1/4 of the robot's mass reflected to each wheel
++  public static final double kSimSteerMOI = 0.004; // kg m^2, simulation only: rotating inertia of the steer assembly (module casing + wheel)
+   public static final double kMaxDriveVelocityAt12VoltsMPS = Units.feetToMeters(15.5); // MK4i L2 Kraken non-FOC With 14t pinion (https://www.swervedrivespecialties.com/products/mk4i-swerve-module?variant=47316033798445)
+   public static final double kSteerMaxAngularSpeedRadsPerSecond = Units.rotationsToRadians(3.0); // steering motor max rotational speed (not the same as robot rotational speed)
+   public static final double kDriveMotorKT = 0.0194; // Torque constant of the drive motor (Nm/A)
+diff --git a/src/main/java/frc/robot/subsystems/drive/DriveModule.java b/src/main/java/frc/robot/subsystems/drive/DriveModule.java
+index 1761679..5bf1101 100644
+--- a/src/main/java/frc/robot/subsystems/drive/DriveModule.java
++++ b/src/main/java/frc/robot/subsystems/drive/DriveModule.java
+@@ -5,6 +5,8 @@
+ package frc.robot.subsystems.drive;
+ 
+ import com.ctre.phoenix6.hardware.TalonFX;
++import com.ctre.phoenix6.sim.ChassisReference;
++import com.ctre.phoenix6.sim.TalonFXSimState;
+ import com.ctre.phoenix6.signals.InvertedValue;
+ import com.ctre.phoenix6.signals.NeutralModeValue;
+ 
+@@ -24,9 +26,12 @@ import com.revrobotics.spark.config.SparkMaxConfig;
+ import com.revrobotics.spark.FeedbackSensor;
+ import com.revrobotics.spark.SparkMax;
+ import com.revrobotics.spark.SparkClosedLoopController;
++import com.revrobotics.sim.SparkMaxSim;
+ 
+ import edu.wpi.first.math.MathUtil;
+ import edu.wpi.first.math.geometry.Rotation2d;
++import edu.wpi.first.math.system.plant.DCMotor;
++import edu.wpi.first.math.system.plant.LinearSystemId;
+ import edu.wpi.first.math.kinematics.SwerveModulePosition;
+ import edu.wpi.first.math.kinematics.SwerveModuleState;
+ import edu.wpi.first.math.util.Units;
+@@ -38,6 +43,9 @@ import edu.wpi.first.units.measure.Temperature;
+ import edu.wpi.first.units.measure.Voltage;
+ import edu.wpi.first.util.sendable.Sendable;
+ import edu.wpi.first.util.sendable.SendableBuilder;
++import edu.wpi.first.wpilibj.RobotBase;
++import edu.wpi.first.wpilibj.RobotController;
++import edu.wpi.first.wpilibj.simulation.DCMotorSim;
+ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
+ 
+ import frc.robot.util.Conversions;
+@@ -77,6 +85,12 @@ public class DriveModule implements Sendable {
+   // Target state (used for telemetry only)
+   private SwerveModuleState targetState;
+ 
++  // Simulation objects (null on a real robot)
++  private TalonFXSimState driveMotorSim;   // lets us feed the Kraken's simulated rotor state
++  private SparkMaxSim steerMotorSim;       // lets us feed the NEO's simulated encoder state
++  private DCMotorSim driveWheelSim;        // physics of the drive wheel
++  private DCMotorSim steerAssemblySim;        // physics of the steering assembly
++
+   // Counter for encoder drift detection
+   private int driftLoops = 0;
+ 
+@@ -156,6 +170,11 @@ public class DriveModule implements Sendable {
+     cachedState = new SwerveModuleState(0.0, Rotation2d.kZero);
+     cachedPosition = new SwerveModulePosition(0.0, Rotation2d.kZero);
+ 
++    // Initialize simulation if running in simulation mode
++    if (RobotBase.isSimulation()) {
++      initSimulation();
++    }
++
+     // Initialize dashboard values
+     SmartDashboard.putData("Drive/Modules/" + this.moduleName, this);
+ 
+@@ -241,6 +260,90 @@ public class DriveModule implements Sendable {
+     return config;
+   }
+ 
++  /**
++   * Creates the physics models for this module and points them at the simulated
++   * motor controllers. The real TalonFX / SparkMax control code keeps running 
++   * unchanged. The physics models just play the part of the motor, gearbox and wheel.
++   */
++  private void initSimulation() {
++    // --- Drive: Kraken X60 -> gearbox -> wheel (with 1/4 of the robot's mass reflected to it)
++    DCMotor kraken = DCMotor.getKrakenX60(1);
++    driveWheelSim = new DCMotorSim(
++      LinearSystemId.createDCMotorSystem(kraken, DriveConstants.kSimDriveMOI, DriveConstants.kDriveGearRatio),
++      kraken
++    );
++    driveMotorSim = driveMotor.getSimState();
++
++    // Match this to the InvertedValue in getDriveMotorConfig(). Phoenix applies the 
++    // configured inversion itself; this only describes how the motor is mounted.
++    driveMotorSim.Orientation = ChassisReference.CounterClockwise_Positive;
++
++    // --- Steer: NEO -> gearbox -> module casing
++    DCMotor neo = DCMotor.getNEO(1);
++    steerAssemblySim = new DCMotorSim(
++      LinearSystemId.createDCMotorSystem(neo, DriveConstants.kSimSteerMOI, DriveConstants.kSteerGearRatio),
++      neo
++    );
++    steerMotorSim = new SparkMaxSim(steerMotor, neo);
++
++    // Start with the wheel pointing straight ahead and every sensor agreeing about it
++    driveWheelSim.setState(0.0, 0.0);
++    steerAssemblySim.setState(0.0, 0.0);
++    absoluteEncoder.setSimulatedAngleRadians(0.0);
++    steerMotorSim.setPosition(0.0);
++    resetEncoders();
++  }
++
++  /**
++   * SIMULATION ONLY: Advances this module's physics by one loop.
++   * Called by the drive subsystem's simulationPeriodic() method.
++   * @param dtSeconds Time step in seconds
++   */
++  public void simulationPeriodic(double dtSeconds) {
++    double batteryVolts = RobotController.getBatteryVoltage();
++
++    // ---- Drive wheel ----
++    // 1. Tell the simulated TalonFX what the battery is doing
++    driveMotorSim.setSupplyVoltage(batteryVolts);
++
++    // 2. Feed the voltage the real velocity controller chose into the physics
++    driveWheelSim.setInputVoltage(driveMotorSim.getMotorVoltage());
++    driveWheelSim.update(dtSeconds);
++
++    // 3. Write the physics result back as rotor position & velocity (motor rotations)
++    driveMotorSim.setRawRotorPosition(Conversions.radiansToRotations(
++      driveWheelSim.getAngularPositionRad(), 
++      DriveConstants.kDriveGearRatio
++    ));
++    driveMotorSim.setRotorVelocity(Conversions.radiansToRotations(
++      driveWheelSim.getAngularVelocityRadPerSec(), 
++      DriveConstants.kDriveGearRatio
++    ));
++
++    // ---- Steering ----
++    // 1. Feed the voltage the SparkMax's closed-loop controller chose into the physics
++    steerAssemblySim.setInputVoltage(steerMotorSim.getAppliedOutput() * batteryVolts);
++    steerAssemblySim.update(dtSeconds);
++
++    // 2. Write the physics result back as encoder position & velocity. The SparkMax 
++    //    reports velocity in motor RPM, so multiply the output shaft speed by the gear ratio.
++    double steerMotorRPM = Units.radiansPerSecondToRotationsPerMinute(
++      steerAssemblySim.getAngularVelocityRadPerSec() * DriveConstants.kSteerGearRatio
++    );
++    steerMotorSim.iterate(steerMotorRPM, batteryVolts, dtSeconds);
++
++    // 3. iterate() integrates its own position, so re-sync it with the physics model.
++    //    This stops the relative encoder and absolute encoder from slowly disagreeing, 
++    //    which would otherwise trigger checkEncoderDrift().
++    steerMotorSim.setPosition(Conversions.radiansToRotations(
++      steerAssemblySim.getAngularPositionRad(), 
++      DriveConstants.kSteerGearRatio
++    ));
++
++    // 4. The absolute encoder always reports the true angle of the module
++    absoluteEncoder.setSimulatedAngleRadians(steerAssemblySim.getAngularPositionRad());
++  }
++
+   /**
+    * Called by the drive subsystem's periodic() method
+    */
+diff --git a/src/main/java/frc/robot/subsystems/drive/DriveSubsystem.java b/src/main/java/frc/robot/subsystems/drive/DriveSubsystem.java
+index 38153d3..1079c49 100644
+--- a/src/main/java/frc/robot/subsystems/drive/DriveSubsystem.java
++++ b/src/main/java/frc/robot/subsystems/drive/DriveSubsystem.java
+@@ -36,6 +36,7 @@ import edu.wpi.first.math.geometry.Rotation2d;
+ import edu.wpi.first.math.geometry.Transform2d;
+ import edu.wpi.first.math.kinematics.ChassisSpeeds;
+ import edu.wpi.first.math.kinematics.SwerveDriveKinematics;
++import edu.wpi.first.math.kinematics.SwerveDriveOdometry;
+ import edu.wpi.first.math.kinematics.SwerveModulePosition;
+ import edu.wpi.first.math.kinematics.SwerveModuleState;
+ import edu.wpi.first.units.measure.Force;
+@@ -86,6 +87,11 @@ public class DriveSubsystem extends SubsystemBase {
+   // Field visualization
+   private final Field2d field2d = new Field2d();
+ 
++  // Simulation only: wheel-only odometry that ignores vision. In simulation the wheels roll
++  // perfectly without slip, so this is the robot's "true" pose. Compare it against the pose 
++  // estimator to see how much vision corrections are moving you, or feed it to a vision sim.
++  private SwerveDriveOdometry simTruthOdometry;
++
+   // Cached zero feedforward for when the input speeds are invalid or feedforwards are unusable
+   private static final DriveFeedforwards kZeroFeedforwards = DriveFeedforwards.zeros(4);
+ 
+@@ -229,6 +235,11 @@ public class DriveSubsystem extends SubsystemBase {
+       )
+     );
+ 
++    // Simulation: start the "true" pose tracker at the same place as the estimator
++    if (RobotBase.isSimulation()) {
++      simTruthOdometry = new SwerveDriveOdometry(kinematics, gyro.getAngle(), getModulePositions(), getPose());
++    }
++
+     // Add data to dashboard
+     SmartDashboard.putData("Drive", this);
+     SmartDashboard.putData("Drive/Field", field2d);
+@@ -254,6 +265,36 @@ public class DriveSubsystem extends SubsystemBase {
+         
+     // Update field visualization
+     field2d.setRobotPose(getPose());
++
++    // Simulation: track the true pose (no vision) and show it on the field
++    if (simTruthOdometry != null) {
++      simTruthOdometry.update(gyro.getAngle(), getModulePositions());
++      field2d.getObject("SimTruth").setPose(simTruthOdometry.getPoseMeters());
++    }
++  }
++
++  @Override
++  public void simulationPeriodic() {
++    // Advance every module's motor/wheel physics. The real controllers (TalonFX velocity 
++    // loop, SparkMax position loop) have already issued their commands in periodic()/commands.
++    for (var module : modules) {
++      module.simulationPeriodic(DriveConstants.kPeriodicTimeSeconds);
++    }
++
++    // There is no real gyro in simulation, so derive the robot's rotation from how fast the 
++    // simulated wheels are actually moving, and integrate it into the simulated heading.
++    ChassisSpeeds actualSpeeds = kinematics.toChassisSpeeds(getModuleStates());
++    gyro.simulate(actualSpeeds.omegaRadiansPerSecond, DriveConstants.kPeriodicTimeSeconds);
++  }
++
++  /**
++   * SIMULATION ONLY: Gets the robot's true pose, from wheel odometry that ignores vision.
++   * Feed this to a vision simulation (e.g. PhotonVision's VisionSystemSim) so simulated 
++   * cameras "see" from where the robot really is, not where the estimator thinks it is.
++   * @return The true pose, or the estimated pose when running on a real robot
++   */
++  public Pose2d getSimTruthPose() {
++    return simTruthOdometry != null ? simTruthOdometry.getPoseMeters() : getPose();
+   }
+ 
+   // ----------------------------------------------------------------------------------------
+@@ -426,11 +467,13 @@ public class DriveSubsystem extends SubsystemBase {
+    * NOTE: Should never need to call this if vision is working properly.
+    */
+   private void resetOdometry(Pose2d pose) {
+-    poseEstimator.resetPosition(
+-      gyro.getAngle(), 
+-      getModulePositions(), 
+-      pose == null ? getSeedPose() : pose
+-    );
++    Pose2d target = pose == null ? getSeedPose() : pose;
++    poseEstimator.resetPosition(gyro.getAngle(), getModulePositions(), target);
++
++    // In simulation there is no other way to place the robot, so teleport the true pose too
++    if (simTruthOdometry != null) {
++      simTruthOdometry.resetPosition(gyro.getAngle(), getModulePositions(), target);
++    }
+   }
+ 
+   /**
+diff --git a/src/main/java/frc/robot/subsystems/drive/Navx2Gyro.java b/src/main/java/frc/robot/subsystems/drive/Navx2Gyro.java
+index 80a4eec..c808104 100644
+--- a/src/main/java/frc/robot/subsystems/drive/Navx2Gyro.java
++++ b/src/main/java/frc/robot/subsystems/drive/Navx2Gyro.java
+@@ -15,6 +15,7 @@ import edu.wpi.first.util.sendable.Sendable;
+ import edu.wpi.first.util.sendable.SendableBuilder;
+ import edu.wpi.first.wpilibj.Alert;
+ import edu.wpi.first.wpilibj.Alert.AlertType;
++import edu.wpi.first.wpilibj.RobotBase;
+ import edu.wpi.first.wpilibj.Timer;
+ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
+ 
+@@ -37,6 +38,10 @@ public class Navx2Gyro implements Sendable {
+   private final Alert calibrationAlert = new Alert("NavX calibration timed out at boot. Heading may be bad.", AlertType.kError);
+   private final Alert magAlert = new Alert("NavX magnetometer not calibrated.", AlertType.kWarning);
+   
++  // Simulated heading (CCW positive). Only used when running in simulation, since the
++  // real AHRS has no physical robot to measure there.
++  private Rotation2d simAngle = Rotation2d.kZero;
++
+   // Debounce so a single dropped SPI frame doesn't flash an error
+   private final Debouncer disconnectDebouncer = new Debouncer(0.25, DebounceType.kRising);
+ 
+@@ -58,6 +63,11 @@ public class Navx2Gyro implements Sendable {
+    * Periodic method to be called by drive subsystem's periodic
+    */
+   public void periodic() {
++    // The simulated gyro is always connected and calibrated
++    if (RobotBase.isSimulation()) {
++      return;
++    }
++
+     boolean connected = gyro.isConnected();
+     boolean calibrating = gyro.isCalibrating();
+ 
+@@ -89,11 +99,17 @@ public class Navx2Gyro implements Sendable {
+ 
+   /** True while the NavX is still calibrating. */
+   public boolean isCalibrating() {
++    if (RobotBase.isSimulation()) {
++      return false;
++    }
+     return gyro.isCalibrating();
+   }
+ 
+   /** True when the gyro is connected and finished calibrating, so its angle can be trusted. */
+   public boolean isReady() {
++    if (RobotBase.isSimulation()) {
++      return true;
++    }
+     return gyro.isConnected() && !gyro.isCalibrating();
+   }
+ 
+@@ -105,6 +121,9 @@ public class Navx2Gyro implements Sendable {
+    * @return The current gyro angle as a Rotation2d, CCW positive
+    */
+   public Rotation2d getAngle() {
++    if (RobotBase.isSimulation()) {
++      return simAngle;
++    }
+     return gyro.getRotation2d();
+   }
+ 
+@@ -129,6 +148,9 @@ public class Navx2Gyro implements Sendable {
+    * @return Current yaw in degrees -180 to 180
+    */
+   public double getYaw() {
++    if (RobotBase.isSimulation()) {
++      return -simAngle.getDegrees(); // navX yaw is clockwise positive
++    }
+     return gyro.getYaw();
+   }
+ 
+@@ -136,9 +158,20 @@ public class Navx2Gyro implements Sendable {
+    * Resets the gyro to zero and clears internal offset.
+    */
+   public void reset() {
++    simAngle = Rotation2d.kZero;
+     gyro.reset();
+   }
+ 
++  /**
++   * SIMULATION ONLY: Integrates the robot's true angular velocity into the simulated heading.
++   * Call once per loop from the drive subsystem's simulationPeriodic().
++   * @param omegaRadPerSec Robot angular velocity, CCW positive
++   * @param dtSeconds Time step in seconds
++   */
++  public void simulate(double omegaRadPerSec, double dtSeconds) {
++    simAngle = simAngle.plus(Rotation2d.fromRadians(omegaRadPerSec * dtSeconds));
++  }
++
+   /**
+    * Initialize the data sent to SmartDashboard
+    */

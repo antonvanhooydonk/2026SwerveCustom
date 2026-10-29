@@ -16,7 +16,6 @@ import edu.wpi.first.math.system.plant.DCMotor;
 import edu.wpi.first.math.util.Units;
 
 import frc.robot.Constants.FieldConstants;
-import frc.robot.Robot;
 
 /**
  * The Constants class provides a convenient place for teams to hold robot-wide numerical or boolean
@@ -35,7 +34,7 @@ public final class DriveConstants {
   public static final double kMaxAngularSpeedRadsPerSecond = Units.rotationsToRadians(1.75); // max rotational speed, conservative: 1.0 - 1.5, competitive: 1.5 - 2.0, aggressive: 2.0 - 2.5
   public static final double kSlowModeScaling = 0.25; // scaling factor for "slow mode", typically 0.25 to 0.5, adjust as needed for driver control at low speeds
 
-  public static final boolean kUseSetpointGenerator = true && Robot.isReal();
+  public static final boolean kUseSetpointGenerator = false;
 
   // ------------------------------------------------------------
   // Driver joystick settings
@@ -102,6 +101,10 @@ public final class DriveConstants {
   public static final double kDriveVoltsPerNewton = kWheelRadiusMeters / kDriveGearRatio / kDriveMotorKT * kDriveMotorOhms;
   public static final double kGyroAngleOffsetDegrees = 0.0; // default 0.0 - Rotate the gyro X axis if the gyro was not installed facing forward
   public static final double kPeriodicTimeSeconds = 0.02; // 20ms (default)
+ 
+  // Simulation constants
+  public static final double kSimDriveMOI = (kRobotMassKg / 4.0) * kWheelRadiusMeters * kWheelRadiusMeters; // kg m^2, simulation only: 1/4 of the robot's mass reflected to each wheel
+  public static final double kSimSteerMOI = 0.004; // kg m^2, simulation only: rotating inertia of the steer assembly (module casing + wheel)
 
   // Define the module translations from the robot's center
   // See: https://docs.wpilib.org/en/stable/docs/software/basic-programming/coordinate-system.html#coordinate-system
