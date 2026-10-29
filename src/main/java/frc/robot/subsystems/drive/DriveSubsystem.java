@@ -1080,6 +1080,15 @@ public class DriveSubsystem extends SubsystemBase {
       .ignoringDisable(true)
       .withName("Drive_ResetOdometry");
   }
+  
+  /**
+   * Toggle motor brake mode
+   */
+  public Command toggleBrakeModeCommand() {
+    return runOnce(() -> setMotorBrake(!brakeMode))
+      .ignoringDisable(true)
+      .withName("Drive_ToggleBrakeMode");
+  }
 
   /**
    * Enables/disables field-relative driving mode
@@ -1098,24 +1107,6 @@ public class DriveSubsystem extends SubsystemBase {
     return runOnce(() -> this.slowMode = slowMode)
       .ignoringDisable(true)
       .withName("Drive_SetSlowMode");
-  }
-
-  /**
-   * Enable/disable motor brake mode
-   */
-  public Command setBrakeModeCommand(boolean brakeMode) {
-    return runOnce(() -> setMotorBrake(brakeMode))
-      .ignoringDisable(true)
-      .withName("Drive_SetBrakeMode");
-  }
-
-  /**
-   * Toggle motor brake mode
-   */
-  public Command toggleBrakeModeCommand() {
-    return runOnce(() -> setMotorBrake(!brakeMode))
-      .ignoringDisable(true)
-      .withName("Drive_ToggleBrakeMode");
   }
 
   /**
