@@ -35,6 +35,10 @@ public class StartingPoseGuide {
     SmartDashboard.putData("Auto Align/Field", field);
   }
 
+  /**
+   * Updates SmartDashboard with the current auto name, the
+   * robot's pose, and the error to the starting pose.
+   */
   public void update() {
     String autoName = autoNameSupplier.get();
     if (autoName == null || autoName.isEmpty()) {
