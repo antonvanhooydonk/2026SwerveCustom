@@ -236,7 +236,7 @@ public class DriveModule implements Sendable {
       .idleMode(IdleMode.kBrake)                    // Brake mode for better control
       .inverted(steerMotorInverted)                 // Set motor inversion
       .smartCurrentLimit(25)             // Continuous current limit in Amps
-      .secondaryCurrentLimit(35)              // Peak current limit: 35A for 20 chop cycles (0.4s) before limiting to 25A
+      .secondaryCurrentLimit(35)              // Cut power at 35A to prevent overheating
       .voltageCompensation(12.0);    // Enable voltage compensation at 12V
 
     // Closed-loop PID configuration (gains are tunable in constants)
