@@ -379,6 +379,7 @@ public class DriveSubsystem extends SubsystemBase {
   private void driveWithSetpointGenerator(ChassisSpeeds speeds) {
     // Skip if the setpoint generator is disabled
     if (!DriveConstants.kUseSetpointGenerator) {
+      driveRobotRelative(speeds, kZeroFeedforwards);
       return;
     }
 
@@ -390,7 +391,7 @@ public class DriveSubsystem extends SubsystemBase {
     // Create a new drive setpoint based on the current drive setpoint & the desired chassis speeds.
     driveSetpoint = setpointGenerator.generateSetpoint(driveSetpoint, speeds, DriveConstants.kPeriodicTimeSeconds);
     
-    // If the generator produced garbage, reset from the real module states and skip this cycle
+    // If the generator produced garbage, set the setpoint to zero speeds and zero feedforward forces
     if (!isValidSpeeds(driveSetpoint.robotRelativeSpeeds())) {
       SwerveModuleState[] stopped = getModuleStates();
       for (var s : stopped) {
