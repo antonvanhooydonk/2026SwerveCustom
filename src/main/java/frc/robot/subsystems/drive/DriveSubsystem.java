@@ -283,8 +283,7 @@ public class DriveSubsystem extends SubsystemBase {
 
     // There is no real gyro in simulation, so derive the robot's rotation from how fast the 
     // simulated wheels are actually moving, and integrate it into the simulated heading.
-    ChassisSpeeds actualSpeeds = kinematics.toChassisSpeeds(getModuleStates());
-    gyro.simulate(actualSpeeds.omegaRadiansPerSecond, DriveConstants.kPeriodicTimeSeconds);
+    gyro.simulate(getRobotRelativeSpeeds().omegaRadiansPerSecond, DriveConstants.kPeriodicTimeSeconds);
   }
 
   /**
