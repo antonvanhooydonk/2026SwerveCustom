@@ -237,7 +237,7 @@ public class DriveSubsystem extends SubsystemBase {
 
     // Simulation: start the "true" pose tracker at the same place as the estimator
     if (RobotBase.isSimulation()) {
-      simTruthOdometry = new SwerveDriveOdometry(kinematics, gyro.getAngle(), getModulePositions(), getPose());
+      simTruthOdometry = new SwerveDriveOdometry(kinematics, gyro.getAngle(), getModulePositions(), getSeedPose());
     }
 
     // Add data to dashboard
