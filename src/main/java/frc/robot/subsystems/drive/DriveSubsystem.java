@@ -321,7 +321,9 @@ public class DriveSubsystem extends SubsystemBase {
 
     // Fall back to zero feedforward if the speeds were bad or the forces are unusable
     DriveFeedforwards ff = (valid && isValidFeedforwards(feedforwards)) ? feedforwards : kZeroFeedforwards;
-    Force[] desiredForces = ff.linearForces();
+    
+    // Copy so we never modify PathPlanner's array or the shared zero array
+    Force[] desiredForces = ff.linearForces().clone();
 
     // Compensate for skew when translating and rotating simultaneously
     speeds = ChassisSpeeds.discretize(speeds, DriveConstants.kPeriodicTimeSeconds);
@@ -363,9 +365,12 @@ public class DriveSubsystem extends SubsystemBase {
       // Feedforward follows the same desaturation, flip, and cosine scaling as the speed
       double scale = desatScale * (flipped ? -1.0 : 1.0) * s.angle.minus(currentAngle).getCos();
 
+      // Apply the scale to the desired forces for this module
+      desiredForces[i] = desiredForces[i].times(scale);
+
       // Set the desired state and feedforward for the current module, 
       // applying the calculated scale to the feedforward force
-      modules[i].setDesiredState(s, desiredForces[i].times(scale));
+      modules[i].setDesiredState(s, desiredForces[i]);
     }
   }
   
