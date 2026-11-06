@@ -313,8 +313,7 @@ public class DriveSubsystem extends SubsystemBase {
       return;
     }
 
-    // Reject non-finite input before it reaches either path. Bad speeds also
-    // invalidate any feedforwards that came with them.
+    // Reject non-finite input. Bad speeds also invalidates any feedforwards that came with them.
     boolean valid = isValidSpeeds(speeds);
     if (!valid) {
       speeds = new ChassisSpeeds();
