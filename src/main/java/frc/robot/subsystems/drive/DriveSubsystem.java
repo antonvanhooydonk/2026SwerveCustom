@@ -314,13 +314,13 @@ public class DriveSubsystem extends SubsystemBase {
     }
 
     // Reject non-finite input. Bad speeds also invalidates any feedforwards that came with them.
-    boolean valid = isValidSpeeds(speeds);
-    if (!valid) {
+    boolean validSpeeds = isValidSpeeds(speeds);
+    if (!validSpeeds) {
       speeds = new ChassisSpeeds();
     }
 
     // Fall back to zero feedforward if the speeds were bad or the forces are unusable
-    DriveFeedforwards ff = (valid && isValidFeedforwards(feedforwards)) ? feedforwards : kZeroFeedforwards;
+    DriveFeedforwards ff = (validSpeeds && isValidFeedforwards(feedforwards)) ? feedforwards : kZeroFeedforwards;
     
     // Copy so we never modify PathPlanner's array or the shared zero array
     Force[] desiredForces = ff.linearForces().clone();
