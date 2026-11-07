@@ -946,7 +946,7 @@ public class DriveSubsystem extends SubsystemBase {
 
       // Ensure tagId is valid
       if (tagId < 0) {
-        Utils.logError("alignToTag: invalid tagId " + tagId);
+        Utils.logError("alignToTag: invalid tagId");
         return null;
       }
 
