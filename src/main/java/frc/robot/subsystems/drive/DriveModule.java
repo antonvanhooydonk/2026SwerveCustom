@@ -523,13 +523,16 @@ public class DriveModule implements Sendable {
     if (!Double.isFinite(angleRadians)) {
       return;
     }
+
+    // Normalize the angle to (-π, π) for safety and consistency
+    double wrapped = Utils.normalizeAngleRadians(angleRadians);
     
     // Update the target state for telemetry
-    targetState.angle = Rotation2d.fromRadians(angleRadians);
+    targetState.angle = Rotation2d.fromRadians(wrapped);
 
     // Convert the angle to motor rotations
     double rotations = Conversions.radiansToRotations(
-      Utils.normalizeAngleRadians(angleRadians), 
+      wrapped, 
       DriveConstants.kSteerGearRatio
     );
 
