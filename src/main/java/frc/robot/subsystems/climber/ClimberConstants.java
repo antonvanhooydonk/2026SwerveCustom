@@ -17,7 +17,10 @@ public final class ClimberConstants {
   // If the climber is zeroed in a different position, then the chain 
   // tensioner may contact the climber gears and cause damage.
   public static final int kEncoderTicksPerRevolution    = 8192;
-  public static final double kGearRatio                 = 28.0 / 10.0;
+  // Sensor (quadrature encoder) rotations per ONE arm rotation. 2.8 assumes the encoder is on the
+  // motor shaft. If the through-bore is on the arm output shaft, set this to 1.0.
+  // Verify: rotate the arm by hand 90 degrees and confirm the dashboard reads ~90.
+  public static final double kSensorToArmRatio          = 28.0 / 10.0;
   public static final double kMinAngleDegrees           = -75.0;
   public static final double kMaxAngleDegrees           = 140.0;
 
@@ -32,7 +35,10 @@ public final class ClimberConstants {
   // Control constants
   // ------------------------------------------------------------
   public static final double kAngleToleranceDegrees     =   2.0;
-  public static final double kStallCurrentThreshold     =  25.5; // Amps - 85% of smart current limit
+  public static final int kSmartStallLimitAmps          =  10;   // Spark smartCurrentLimit stall limit (at ~0 RPM)
+  public static final int kSmartFreeLimitAmps           =  30;   // Spark smartCurrentLimit free limit
+  // Must be BELOW the stall limit, or a stalled motor (held at the stall limit) never trips it
+  public static final double kStallCurrentThreshold     =  0.85 * kSmartStallLimitAmps; // Amps
   public static final double kStallVelocityThresholdRPM =  10.0; // RPM - indicates motor not moving
   public static final double kManualUpVoltage           = -12.0; // manual up control
   public static final double kManualDownVoltage         =  12.0; // manual down control

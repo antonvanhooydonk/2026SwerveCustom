@@ -5,6 +5,7 @@
 package frc.robot.util;
 
 import com.ctre.phoenix6.StatusCode;
+import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.Follower;
 import com.ctre.phoenix6.hardware.TalonFX;
@@ -37,6 +38,25 @@ public final class TalonFXFactory {
     }
 
     // Return true if the configuration was applied successfully, false otherwise
+    return status == StatusCode.OK;
+  }
+
+  /**
+   * Applies ONLY the Slot0 gains to a motor, with retry logic. Unlike applyConfig(), this 
+   * leaves every other setting (current limits, soft limits, MotionMagic, neutral mode, 
+   * inversion) untouched. Use this for live dashboard tuning.
+   * @param motor The TalonFX motor
+   * @param slot0 The Slot0 gains to apply
+   * @return True if the gains were applied successfully, false otherwise
+   */
+  public static boolean applySlot0(TalonFX motor, Slot0Configs slot0) {
+    StatusCode status = StatusCode.GeneralError;
+    for (int i = 0; i < 5 && status != StatusCode.OK; i++) {
+      status = motor.getConfigurator().apply(slot0);
+    }
+    if (status != StatusCode.OK) {
+      Utils.logError("Failed to apply Slot0 gains to TalonFX with device ID: " + motor.getDeviceID() + " after 5 attempts. Status: " + status);
+    }
     return status == StatusCode.OK;
   }
 

@@ -1067,6 +1067,19 @@ public class DriveSubsystem extends SubsystemBase {
   }
 
   /**
+   * Driver-triggered heading reset. Unlike seedHeadingForAllianceCommand() this ALWAYS runs
+   * (the seed method is a once-per-alliance no-op after the first seed). Sets the pose heading to
+   * the alliance-forward direction and keeps the translation estimate. The driver must have the
+   * robot pointed away from their driver station when pressing the button.
+   * No subsystem requirement, so it never interrupts the drive command.
+   */
+  public Command resetHeadingCommand() {
+    return Commands.runOnce(this::resetHeading)
+      .ignoringDisable(true)
+      .withName("Drive_ResetHeading");
+  }
+
+  /**
    * Reset the odometry to origin (0,0,0) with module encoder reset.
    * NOTE: Should never need to call this if vision is working properly.
    */

@@ -21,6 +21,7 @@ public final class FeederConstants {
   // ------------------------------------------------------------
   // Control constants
   // ------------------------------------------------------------
+  public static final double kGearRatio           =     1.0; // Motor rotations per feeder roller rotation (1.0 = direct). RPM values below are ROLLER RPM.
   public static final double kFeederMinRPM          = -6000.0; // Minimum RPM for feeder
   public static final double kFeederMaxRPM          =  6000.0; // Maximum RPM for feeder
   public static final double kFeederToleranceRPM    =    50.0; // RPM window to consider feeder at target

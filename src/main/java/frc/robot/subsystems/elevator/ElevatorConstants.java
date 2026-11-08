@@ -32,8 +32,6 @@ public final class ElevatorConstants {
   // Control constants
   // ------------------------------------------------------------
   public static final double kHeightToleranceMeters   = Units.inchesToMeters(0.5); // Tolerance for isAtTarget
-  public static final double kStallCurrentThreshold   =  25.5; // Amps - 85% of smart current limit
-  public static final double kStallVelocityThreshold  = Units.inchesToMeters(0.25); // Meters/sec - indicates motor not moving
   public static final double kMoveTimeoutSeconds      =   3.0;
   public static final double kManualUpVoltage         =  12.0;   // Voltage for manual up control
   public static final double kManualDownVoltage       = -12.0;   // Voltage for manual down control

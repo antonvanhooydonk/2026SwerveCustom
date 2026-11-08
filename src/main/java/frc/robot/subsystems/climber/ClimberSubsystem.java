@@ -152,7 +152,7 @@ public class ClimberSubsystem extends SubsystemBase {
     
     // Set basic motor parameters
     config
-      .smartCurrentLimit(10, 30) 
+      .smartCurrentLimit(ClimberConstants.kSmartStallLimitAmps, ClimberConstants.kSmartFreeLimitAmps) 
       .voltageCompensation(12) 
       .idleMode(IdleMode.kBrake)
       .inverted(false);
@@ -175,15 +175,15 @@ public class ClimberSubsystem extends SubsystemBase {
     config.closedLoop.maxMotion
       .cruiseVelocity(Conversions.degreesToRotations(
         ClimberConstants.kMaxVelocityDegPerSec, 
-        ClimberConstants.kGearRatio
+        ClimberConstants.kSensorToArmRatio
       ) * 60)
       .maxAcceleration(Conversions.degreesToRotations(
         ClimberConstants.kMaxAccelDegPerSec2, 
-        ClimberConstants.kGearRatio
+        ClimberConstants.kSensorToArmRatio
       ) * 60)
       .allowedProfileError(Conversions.degreesToRotations(
         ClimberConstants.kAngleToleranceDegrees, 
-        ClimberConstants.kGearRatio
+        ClimberConstants.kSensorToArmRatio
       ));
 
     // Set soft limits to prevent over-rotation
@@ -191,12 +191,12 @@ public class ClimberSubsystem extends SubsystemBase {
       .forwardSoftLimitEnabled(true)
       .forwardSoftLimit(Conversions.degreesToRotations(
         ClimberConstants.kMaxAngleDegrees, 
-        ClimberConstants.kGearRatio
+        ClimberConstants.kSensorToArmRatio
       ))
       .reverseSoftLimitEnabled(true)
       .reverseSoftLimit(Conversions.degreesToRotations(
         ClimberConstants.kMinAngleDegrees, 
-        ClimberConstants.kGearRatio
+        ClimberConstants.kSensorToArmRatio
       ));
 
     // Return the configured SparkMaxConfig
@@ -222,7 +222,7 @@ public class ClimberSubsystem extends SubsystemBase {
     // Convert target angle to motor rotations
     double targetMotorRotations = Conversions.degreesToRotations(
       targetAngleDegrees, 
-      ClimberConstants.kGearRatio
+      ClimberConstants.kSensorToArmRatio
     );
 
     // Set the target position using max motion control
@@ -260,7 +260,7 @@ public class ClimberSubsystem extends SubsystemBase {
   private double getAngleDegrees() {
     return Utils.normalizeAngleDegrees(Conversions.rotationsToDegrees(
       climberEncoder.getPosition(), 
-      ClimberConstants.kGearRatio
+      ClimberConstants.kSensorToArmRatio
     ));
   }
   

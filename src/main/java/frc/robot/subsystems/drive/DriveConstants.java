@@ -31,7 +31,7 @@ public final class DriveConstants {
   // ------------------------------------------------------------
   public static final double kMaxSpeedMetersPerSecond = Units.feetToMeters(14); // max translational speed, ensure <= kMaxDriveVelocityAt12VoltsMPS (15.5), set 7 in loft, 10 - 14 at competition
   public static final double kMaxAccelMetersPerSecondSq = Units.feetToMeters(16); // max translational acceleration
-  public static final double kMaxAngularSpeedRadsPerSecond = Units.rotationsToRadians(1.75); // max rotational speed, conservative: 1.0 - 1.5, competitive: 1.5 - 2.0, aggressive: 2.0 - 2.5
+  public static final double kMaxAngularSpeedRadsPerSecond = Units.rotationsToRadians(1.6); // max rotational speed. Physical ceiling = kMaxSpeedMetersPerSecond / 0.413 m (module radius) = ~1.64 rot/s, so keep <= that
   public static final double kSlowModeScaling = 0.25; // scaling factor for "slow mode", typically 0.25 to 0.5, adjust as needed for driver control at low speeds
 
   public static final boolean kUseSetpointGenerator = true;
@@ -168,7 +168,7 @@ public final class DriveConstants {
     kRobotMOI,
     new ModuleConfig(
       kWheelRadiusMeters,
-      kMaxDriveVelocityAt12VoltsMPS,
+      kMaxSpeedMetersPerSecond, // must match the clamp in DriveModule.setDriveVelocity()
       kWheelCOF, 
       DCMotor.getKrakenX60(1).withReduction(kDriveGearRatio),
       80.0, // match stator limit in module drive motor config

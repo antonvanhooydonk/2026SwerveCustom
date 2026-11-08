@@ -10,6 +10,7 @@ import static edu.wpi.first.units.Units.Volts;
 
 import java.util.Arrays;
 
+import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.VelocityVoltage;
 import com.ctre.phoenix6.controls.VoltageOut;
@@ -134,16 +135,17 @@ public class FeederSubsystem extends SubsystemBase {
     lastTuning = current;
 
     // Update the controller with the new constants
-    TalonFXConfiguration tuneConfig = new TalonFXConfiguration();
-    tuneConfig.Slot0
+    // Only touch Slot0. Applying a fresh TalonFXConfiguration would reset current limits,
+    // soft limits, MotionMagic, neutral mode, etc. back to factory defaults.
+    Slot0Configs slot0 = new Slot0Configs()
       .withKP(current[0])
       .withKI(current[1])
       .withKD(current[2])
       .withKS(current[3])
       .withKV(current[4])
       .withKA(current[5]);
-    
-    TalonFXFactory.applyConfig(feederMotor, tuneConfig);
+
+    TalonFXFactory.applySlot0(feederMotor, slot0);
   }
   
   /**
@@ -203,7 +205,7 @@ public class FeederSubsystem extends SubsystemBase {
     );
 
     // Set the feeder velocity (TalonFX velocity is in RPS, convert RPM to RPS)
-    feederMotor.setControl(feederVelocityRequest.withVelocity(targetRPM / 60.0));
+    feederMotor.setControl(feederVelocityRequest.withVelocity(targetRPM / 60.0 * FeederConstants.kGearRatio));
   }
 
   /**
@@ -212,7 +214,7 @@ public class FeederSubsystem extends SubsystemBase {
    */
   private double getRPM() {
     // TalonFX velocity is in RPS, convert to RPM
-    return feederMotor.getVelocity().getValueAsDouble() * 60.0;
+    return feederMotor.getVelocity().getValueAsDouble() * 60.0 / FeederConstants.kGearRatio;
   }
 
   /**

@@ -83,9 +83,12 @@ public final class Constants {
     // Feeder motor ID
     public static final int kFeederMotorID = 24;
 
-    // Intake motor & solenoid IDs
+    // Intake roller motor ID
     public static final int kIntakeRollerMotorID = 19;
-    public static final int kIntakeSolenoidMotorID = 20;
+
+    // REV Pneumatic Hub CAN ID. Must match the PH's actual ID (REV Hardware Client);
+    // the factory default is 1. A mismatch means the intake never deploys.
+    public static final int kPneumaticsHubID = 20;
 
     // Turret & flywheel motor IDs
     public static final int kTurretMotorID = 21;

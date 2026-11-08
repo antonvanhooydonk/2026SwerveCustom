@@ -74,7 +74,7 @@ public final class VisionConstants {
     ),
     "VISION_BACK", new Transform3d(
       new Translation3d(
-        Units.inchesToMeters(-8),          // forward 8 inches
+        Units.inchesToMeters(-8),          // back 8 inches
         Units.inchesToMeters(6),    // left 6 inches  
         Units.inchesToMeters(12)    // up 12 inches 
       ),

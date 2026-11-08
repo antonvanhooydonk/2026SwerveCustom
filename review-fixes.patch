@@ -1,0 +1,559 @@
+diff --git a/src/main/java/frc/robot/Constants.java b/src/main/java/frc/robot/Constants.java
+index b7d2956..9eeaaa9 100644
+--- a/src/main/java/frc/robot/Constants.java
++++ b/src/main/java/frc/robot/Constants.java
+@@ -83,9 +83,12 @@ public final class Constants {
+     // Feeder motor ID
+     public static final int kFeederMotorID = 24;
+ 
+-    // Intake motor & solenoid IDs
++    // Intake roller motor ID
+     public static final int kIntakeRollerMotorID = 19;
+-    public static final int kIntakeSolenoidMotorID = 20;
++
++    // REV Pneumatic Hub CAN ID. Must match the PH's actual ID (REV Hardware Client);
++    // the factory default is 1. A mismatch means the intake never deploys.
++    public static final int kPneumaticsHubID = 20;
+ 
+     // Turret & flywheel motor IDs
+     public static final int kTurretMotorID = 21;
+diff --git a/src/main/java/frc/robot/RobotContainer.java b/src/main/java/frc/robot/RobotContainer.java
+index a49bddf..2b9f258 100644
+--- a/src/main/java/frc/robot/RobotContainer.java
++++ b/src/main/java/frc/robot/RobotContainer.java
+@@ -188,8 +188,9 @@ public class RobotContainer {
+     // toggles the drive mode: field-relative vs robot-relative
+     RobotModeTriggers.teleop().and(driverXbox.back()).onTrue(driveSubsystem.toggleFieldRelativeCommand());
+ 
+-    // re-zero field-relative heading only (keeps the vision/odometry position)
+-    RobotModeTriggers.teleop().and(driverXbox.start()).onTrue(driveSubsystem.seedHeadingForAllianceCommand());
++    // re-zero field-relative heading only (keeps the vision/odometry position).
++    // Point the robot away from the driver station first.
++    RobotModeTriggers.teleop().and(driverXbox.start()).onTrue(driveSubsystem.resetHeadingCommand());
+ 
+     // teleop button bindings
+     RobotModeTriggers.teleop().and(driverXbox.a()).onTrue(Commands.none());
+diff --git a/src/main/java/frc/robot/subsystems/climber/ClimberConstants.java b/src/main/java/frc/robot/subsystems/climber/ClimberConstants.java
+index 6da54a8..498d833 100644
+--- a/src/main/java/frc/robot/subsystems/climber/ClimberConstants.java
++++ b/src/main/java/frc/robot/subsystems/climber/ClimberConstants.java
+@@ -17,7 +17,10 @@ public final class ClimberConstants {
+   // If the climber is zeroed in a different position, then the chain 
+   // tensioner may contact the climber gears and cause damage.
+   public static final int kEncoderTicksPerRevolution    = 8192;
+-  public static final double kGearRatio                 = 28.0 / 10.0;
++  // Sensor (quadrature encoder) rotations per ONE arm rotation. 2.8 assumes the encoder is on the
++  // motor shaft. If the through-bore is on the arm output shaft, set this to 1.0.
++  // Verify: rotate the arm by hand 90 degrees and confirm the dashboard reads ~90.
++  public static final double kSensorToArmRatio          = 28.0 / 10.0;
+   public static final double kMinAngleDegrees           = -75.0;
+   public static final double kMaxAngleDegrees           = 140.0;
+ 
+@@ -32,7 +35,10 @@ public final class ClimberConstants {
+   // Control constants
+   // ------------------------------------------------------------
+   public static final double kAngleToleranceDegrees     =   2.0;
+-  public static final double kStallCurrentThreshold     =  25.5; // Amps - 85% of smart current limit
++  public static final int kSmartStallLimitAmps          =  10;   // Spark smartCurrentLimit stall limit (at ~0 RPM)
++  public static final int kSmartFreeLimitAmps           =  30;   // Spark smartCurrentLimit free limit
++  // Must be BELOW the stall limit, or a stalled motor (held at the stall limit) never trips it
++  public static final double kStallCurrentThreshold     =  0.85 * kSmartStallLimitAmps; // Amps
+   public static final double kStallVelocityThresholdRPM =  10.0; // RPM - indicates motor not moving
+   public static final double kManualUpVoltage           = -12.0; // manual up control
+   public static final double kManualDownVoltage         =  12.0; // manual down control
+diff --git a/src/main/java/frc/robot/subsystems/climber/ClimberSubsystem.java b/src/main/java/frc/robot/subsystems/climber/ClimberSubsystem.java
+index 3a9001a..dc9bc02 100644
+--- a/src/main/java/frc/robot/subsystems/climber/ClimberSubsystem.java
++++ b/src/main/java/frc/robot/subsystems/climber/ClimberSubsystem.java
+@@ -152,7 +152,7 @@ public class ClimberSubsystem extends SubsystemBase {
+     
+     // Set basic motor parameters
+     config
+-      .smartCurrentLimit(10, 30) 
++      .smartCurrentLimit(ClimberConstants.kSmartStallLimitAmps, ClimberConstants.kSmartFreeLimitAmps) 
+       .voltageCompensation(12) 
+       .idleMode(IdleMode.kBrake)
+       .inverted(false);
+@@ -175,15 +175,15 @@ public class ClimberSubsystem extends SubsystemBase {
+     config.closedLoop.maxMotion
+       .cruiseVelocity(Conversions.degreesToRotations(
+         ClimberConstants.kMaxVelocityDegPerSec, 
+-        ClimberConstants.kGearRatio
++        ClimberConstants.kSensorToArmRatio
+       ) * 60)
+       .maxAcceleration(Conversions.degreesToRotations(
+         ClimberConstants.kMaxAccelDegPerSec2, 
+-        ClimberConstants.kGearRatio
++        ClimberConstants.kSensorToArmRatio
+       ) * 60)
+       .allowedProfileError(Conversions.degreesToRotations(
+         ClimberConstants.kAngleToleranceDegrees, 
+-        ClimberConstants.kGearRatio
++        ClimberConstants.kSensorToArmRatio
+       ));
+ 
+     // Set soft limits to prevent over-rotation
+@@ -191,12 +191,12 @@ public class ClimberSubsystem extends SubsystemBase {
+       .forwardSoftLimitEnabled(true)
+       .forwardSoftLimit(Conversions.degreesToRotations(
+         ClimberConstants.kMaxAngleDegrees, 
+-        ClimberConstants.kGearRatio
++        ClimberConstants.kSensorToArmRatio
+       ))
+       .reverseSoftLimitEnabled(true)
+       .reverseSoftLimit(Conversions.degreesToRotations(
+         ClimberConstants.kMinAngleDegrees, 
+-        ClimberConstants.kGearRatio
++        ClimberConstants.kSensorToArmRatio
+       ));
+ 
+     // Return the configured SparkMaxConfig
+@@ -222,7 +222,7 @@ public class ClimberSubsystem extends SubsystemBase {
+     // Convert target angle to motor rotations
+     double targetMotorRotations = Conversions.degreesToRotations(
+       targetAngleDegrees, 
+-      ClimberConstants.kGearRatio
++      ClimberConstants.kSensorToArmRatio
+     );
+ 
+     // Set the target position using max motion control
+@@ -260,7 +260,7 @@ public class ClimberSubsystem extends SubsystemBase {
+   private double getAngleDegrees() {
+     return Utils.normalizeAngleDegrees(Conversions.rotationsToDegrees(
+       climberEncoder.getPosition(), 
+-      ClimberConstants.kGearRatio
++      ClimberConstants.kSensorToArmRatio
+     ));
+   }
+   
+diff --git a/src/main/java/frc/robot/subsystems/drive/DriveConstants.java b/src/main/java/frc/robot/subsystems/drive/DriveConstants.java
+index a54b15c..fa75955 100644
+--- a/src/main/java/frc/robot/subsystems/drive/DriveConstants.java
++++ b/src/main/java/frc/robot/subsystems/drive/DriveConstants.java
+@@ -31,7 +31,7 @@ public final class DriveConstants {
+   // ------------------------------------------------------------
+   public static final double kMaxSpeedMetersPerSecond = Units.feetToMeters(14); // max translational speed, ensure <= kMaxDriveVelocityAt12VoltsMPS (15.5), set 7 in loft, 10 - 14 at competition
+   public static final double kMaxAccelMetersPerSecondSq = Units.feetToMeters(16); // max translational acceleration
+-  public static final double kMaxAngularSpeedRadsPerSecond = Units.rotationsToRadians(1.75); // max rotational speed, conservative: 1.0 - 1.5, competitive: 1.5 - 2.0, aggressive: 2.0 - 2.5
++  public static final double kMaxAngularSpeedRadsPerSecond = Units.rotationsToRadians(1.6); // max rotational speed. Physical ceiling = kMaxSpeedMetersPerSecond / 0.413 m (module radius) = ~1.64 rot/s, so keep <= that
+   public static final double kSlowModeScaling = 0.25; // scaling factor for "slow mode", typically 0.25 to 0.5, adjust as needed for driver control at low speeds
+ 
+   public static final boolean kUseSetpointGenerator = true;
+@@ -168,7 +168,7 @@ public final class DriveConstants {
+     kRobotMOI,
+     new ModuleConfig(
+       kWheelRadiusMeters,
+-      kMaxDriveVelocityAt12VoltsMPS,
++      kMaxSpeedMetersPerSecond, // must match the clamp in DriveModule.setDriveVelocity()
+       kWheelCOF, 
+       DCMotor.getKrakenX60(1).withReduction(kDriveGearRatio),
+       80.0, // match stator limit in module drive motor config
+diff --git a/src/main/java/frc/robot/subsystems/drive/DriveSubsystem.java b/src/main/java/frc/robot/subsystems/drive/DriveSubsystem.java
+index bbc4c8c..6b1c910 100644
+--- a/src/main/java/frc/robot/subsystems/drive/DriveSubsystem.java
++++ b/src/main/java/frc/robot/subsystems/drive/DriveSubsystem.java
+@@ -1066,6 +1066,19 @@ public class DriveSubsystem extends SubsystemBase {
+       .withName("Drive_SeedHeadingForAlliance");
+   }
+ 
++  /**
++   * Driver-triggered heading reset. Unlike seedHeadingForAllianceCommand() this ALWAYS runs
++   * (the seed method is a once-per-alliance no-op after the first seed). Sets the pose heading to
++   * the alliance-forward direction and keeps the translation estimate. The driver must have the
++   * robot pointed away from their driver station when pressing the button.
++   * No subsystem requirement, so it never interrupts the drive command.
++   */
++  public Command resetHeadingCommand() {
++    return Commands.runOnce(this::resetHeading)
++      .ignoringDisable(true)
++      .withName("Drive_ResetHeading");
++  }
++
+   /**
+    * Reset the odometry to origin (0,0,0) with module encoder reset.
+    * NOTE: Should never need to call this if vision is working properly.
+diff --git a/src/main/java/frc/robot/subsystems/elevator/ElevatorConstants.java b/src/main/java/frc/robot/subsystems/elevator/ElevatorConstants.java
+index 1089875..7f7a4a9 100644
+--- a/src/main/java/frc/robot/subsystems/elevator/ElevatorConstants.java
++++ b/src/main/java/frc/robot/subsystems/elevator/ElevatorConstants.java
+@@ -32,8 +32,6 @@ public final class ElevatorConstants {
+   // Control constants
+   // ------------------------------------------------------------
+   public static final double kHeightToleranceMeters   = Units.inchesToMeters(0.5); // Tolerance for isAtTarget
+-  public static final double kStallCurrentThreshold   =  25.5; // Amps - 85% of smart current limit
+-  public static final double kStallVelocityThreshold  = Units.inchesToMeters(0.25); // Meters/sec - indicates motor not moving
+   public static final double kMoveTimeoutSeconds      =   3.0;
+   public static final double kManualUpVoltage         =  12.0;   // Voltage for manual up control
+   public static final double kManualDownVoltage       = -12.0;   // Voltage for manual down control
+diff --git a/src/main/java/frc/robot/subsystems/elevator/ElevatorSubsystem.java b/src/main/java/frc/robot/subsystems/elevator/ElevatorSubsystem.java
+index ded1d5a..08f2ddd 100644
+--- a/src/main/java/frc/robot/subsystems/elevator/ElevatorSubsystem.java
++++ b/src/main/java/frc/robot/subsystems/elevator/ElevatorSubsystem.java
+@@ -10,6 +10,7 @@ import static edu.wpi.first.units.Units.Volts;
+ 
+ import java.util.Arrays;
+ 
++import com.ctre.phoenix6.configs.Slot0Configs;
+ import com.ctre.phoenix6.configs.TalonFXConfiguration;
+ import com.ctre.phoenix6.controls.MotionMagicVoltage;
+ import com.ctre.phoenix6.controls.VoltageOut;
+@@ -230,8 +231,9 @@ public class ElevatorSubsystem extends SubsystemBase {
+     lastTuning = current;
+     
+     // Update the controller with the new constants
+-    TalonFXConfiguration tuneConfig = new TalonFXConfiguration();
+-    tuneConfig.Slot0
++    // Only touch Slot0. Applying a fresh TalonFXConfiguration would reset current limits,
++    // soft limits, MotionMagic, neutral mode, etc. back to factory defaults.
++    Slot0Configs slot0 = new Slot0Configs()
+       .withKP(current[0])
+       .withKI(current[1])
+       .withKD(current[2])
+@@ -240,9 +242,9 @@ public class ElevatorSubsystem extends SubsystemBase {
+       .withKA(current[5])
+       .withKG(current[6])
+       .withGravityType(GravityTypeValue.Elevator_Static);
+-    
+-    TalonFXFactory.applyConfig(leaderMotor, tuneConfig);
+-    TalonFXFactory.applyConfig(followerMotor, tuneConfig);
++
++    TalonFXFactory.applySlot0(leaderMotor, slot0);
++    TalonFXFactory.applySlot0(followerMotor, slot0);
+   }
+   
+   /**
+diff --git a/src/main/java/frc/robot/subsystems/feeder/FeederConstants.java b/src/main/java/frc/robot/subsystems/feeder/FeederConstants.java
+index 833bdc4..0947e75 100644
+--- a/src/main/java/frc/robot/subsystems/feeder/FeederConstants.java
++++ b/src/main/java/frc/robot/subsystems/feeder/FeederConstants.java
+@@ -21,6 +21,7 @@ public final class FeederConstants {
+   // ------------------------------------------------------------
+   // Control constants
+   // ------------------------------------------------------------
++  public static final double kGearRatio           =     1.0; // Motor rotations per feeder roller rotation (1.0 = direct). RPM values below are ROLLER RPM.
+   public static final double kFeederMinRPM          = -6000.0; // Minimum RPM for feeder
+   public static final double kFeederMaxRPM          =  6000.0; // Maximum RPM for feeder
+   public static final double kFeederToleranceRPM    =    50.0; // RPM window to consider feeder at target
+diff --git a/src/main/java/frc/robot/subsystems/feeder/FeederSubsystem.java b/src/main/java/frc/robot/subsystems/feeder/FeederSubsystem.java
+index 3f94948..ae1d54a 100644
+--- a/src/main/java/frc/robot/subsystems/feeder/FeederSubsystem.java
++++ b/src/main/java/frc/robot/subsystems/feeder/FeederSubsystem.java
+@@ -10,6 +10,7 @@ import static edu.wpi.first.units.Units.Volts;
+ 
+ import java.util.Arrays;
+ 
++import com.ctre.phoenix6.configs.Slot0Configs;
+ import com.ctre.phoenix6.configs.TalonFXConfiguration;
+ import com.ctre.phoenix6.controls.VelocityVoltage;
+ import com.ctre.phoenix6.controls.VoltageOut;
+@@ -134,16 +135,17 @@ public class FeederSubsystem extends SubsystemBase {
+     lastTuning = current;
+ 
+     // Update the controller with the new constants
+-    TalonFXConfiguration tuneConfig = new TalonFXConfiguration();
+-    tuneConfig.Slot0
++    // Only touch Slot0. Applying a fresh TalonFXConfiguration would reset current limits,
++    // soft limits, MotionMagic, neutral mode, etc. back to factory defaults.
++    Slot0Configs slot0 = new Slot0Configs()
+       .withKP(current[0])
+       .withKI(current[1])
+       .withKD(current[2])
+       .withKS(current[3])
+       .withKV(current[4])
+       .withKA(current[5]);
+-    
+-    TalonFXFactory.applyConfig(feederMotor, tuneConfig);
++
++    TalonFXFactory.applySlot0(feederMotor, slot0);
+   }
+   
+   /**
+@@ -203,7 +205,7 @@ public class FeederSubsystem extends SubsystemBase {
+     );
+ 
+     // Set the feeder velocity (TalonFX velocity is in RPS, convert RPM to RPS)
+-    feederMotor.setControl(feederVelocityRequest.withVelocity(targetRPM / 60.0));
++    feederMotor.setControl(feederVelocityRequest.withVelocity(targetRPM / 60.0 * FeederConstants.kGearRatio));
+   }
+ 
+   /**
+@@ -212,7 +214,7 @@ public class FeederSubsystem extends SubsystemBase {
+    */
+   private double getRPM() {
+     // TalonFX velocity is in RPS, convert to RPM
+-    return feederMotor.getVelocity().getValueAsDouble() * 60.0;
++    return feederMotor.getVelocity().getValueAsDouble() * 60.0 / FeederConstants.kGearRatio;
+   }
+ 
+   /**
+diff --git a/src/main/java/frc/robot/subsystems/flywheel/FlywheelConstants.java b/src/main/java/frc/robot/subsystems/flywheel/FlywheelConstants.java
+index 611c874..38f34de 100644
+--- a/src/main/java/frc/robot/subsystems/flywheel/FlywheelConstants.java
++++ b/src/main/java/frc/robot/subsystems/flywheel/FlywheelConstants.java
+@@ -23,14 +23,13 @@ public final class FlywheelConstants {
+   // ------------------------------------------------------------
+   // Control constants
+   // ------------------------------------------------------------
++  public static final double kGearRatio               = 1.0;    // Motor rotations per flywheel rotation (1.0 = direct drive). All RPM values below are FLYWHEEL RPM.
++  public static final double kMotorFreeRPM            = 6000.0; // Kraken X60 free speed
+   public static final double kFlywheelMinRPM          = 0.0;    // Minimum RPM for flywheel
+-  public static final double kFlywheelMaxRPM          = 6000.0; // Maximum RPM for flywheel
++  public static final double kFlywheelMaxRPM          = 0.90 * kMotorFreeRPM / kGearRatio; // Keep headroom: free speed is unreachable under load
+   public static final double kFlywheelToleranceRPM    = 100.0;  // RPM window to consider flywheel at target
+   public static final double kFlywheelMinSpinningRPM  = 100.0;  // RPM threshold to consider flywheel spinning
+ 
+-  // Average fuel exit speed used for time-of-flight / shoot-on-the-move lead. TODO: calibrate
+-  // against measured shots (it should correspond to the RPM the table commands).
+-  public static final double kShotSpeedMetersPerSecond = 12.0;
+ 
+   public static final double kFlywheelDefaultDistanceToTarget = 2.0; // Default distance to target if robot or target pose is null
+   public static final double kShotLatencySeconds = 0.10; // placeholder: measure/tune
+diff --git a/src/main/java/frc/robot/subsystems/flywheel/FlywheelSubsystem.java b/src/main/java/frc/robot/subsystems/flywheel/FlywheelSubsystem.java
+index bea0ffe..f9fed13 100644
+--- a/src/main/java/frc/robot/subsystems/flywheel/FlywheelSubsystem.java
++++ b/src/main/java/frc/robot/subsystems/flywheel/FlywheelSubsystem.java
+@@ -11,6 +11,7 @@ import static edu.wpi.first.units.Units.Volts;
+ import java.util.Arrays;
+ import java.util.function.Supplier;
+ 
++import com.ctre.phoenix6.configs.Slot0Configs;
+ import com.ctre.phoenix6.configs.TalonFXConfiguration;
+ import com.ctre.phoenix6.controls.VelocityVoltage;
+ import com.ctre.phoenix6.controls.VoltageOut;
+@@ -129,7 +130,7 @@ public class FlywheelSubsystem extends SubsystemBase {
+     rpmTable.put(7.0, 5000.0); 
+     rpmTable.put(8.0, 5500.0); 
+     rpmTable.put(9.0, 5500.0); 
+-    rpmTable.put(10.0, 6000.0); 
++    rpmTable.put(10.0, FlywheelConstants.kFlywheelMaxRPM); 
+   }
+ 
+   @Override
+@@ -174,17 +175,18 @@ public class FlywheelSubsystem extends SubsystemBase {
+     lastTuning = current;
+ 
+     // Update the controller with the new constants
+-    TalonFXConfiguration tuneConfig = new TalonFXConfiguration();
+-    tuneConfig.Slot0
++    // Only touch Slot0. Applying a fresh TalonFXConfiguration would reset current limits,
++    // soft limits, MotionMagic, neutral mode, etc. back to factory defaults.
++    Slot0Configs slot0 = new Slot0Configs()
+       .withKP(current[0])
+       .withKI(current[1])
+       .withKD(current[2])
+       .withKS(current[3])
+       .withKV(current[4])
+       .withKA(current[5]);
+-    
+-    TalonFXFactory.applyConfig(flywheelLeader, tuneConfig);
+-    TalonFXFactory.applyConfig(flywheelFollower, tuneConfig);
++
++    TalonFXFactory.applySlot0(flywheelLeader, slot0);
++    TalonFXFactory.applySlot0(flywheelFollower, slot0);
+   }
+   
+   /**
+@@ -244,7 +246,7 @@ public class FlywheelSubsystem extends SubsystemBase {
+     );
+ 
+     // Set the flywheel velocity (TalonFX velocity is in RPS, convert RPM to RPS)
+-    flywheelLeader.setControl(flywheelVelocityRequest.withVelocity(targetRPM / 60.0));
++    flywheelLeader.setControl(flywheelVelocityRequest.withVelocity(targetRPM / 60.0 * FlywheelConstants.kGearRatio));
+   }
+ 
+   /**
+@@ -253,7 +255,7 @@ public class FlywheelSubsystem extends SubsystemBase {
+    */
+   private double getRPM() {
+     // TalonFX velocity is in RPS, convert to RPM
+-    return flywheelLeader.getVelocity().getValueAsDouble() * 60.0;
++    return flywheelLeader.getVelocity().getValueAsDouble() * 60.0 / FlywheelConstants.kGearRatio;
+   }
+ 
+   /**
+diff --git a/src/main/java/frc/robot/subsystems/intake/IntakeConstants.java b/src/main/java/frc/robot/subsystems/intake/IntakeConstants.java
+index 21a3b54..a109cc5 100644
+--- a/src/main/java/frc/robot/subsystems/intake/IntakeConstants.java
++++ b/src/main/java/frc/robot/subsystems/intake/IntakeConstants.java
+@@ -9,6 +9,8 @@ package frc.robot.subsystems.intake;
+  * All values should be tuned based on your specific robot
+  */
+ public final class IntakeConstants {
++  public static final double kGearRatio = 1.0; // Motor rotations per roller rotation (1.0 = direct). RPM values below are ROLLER RPM.
++
+   // Motor power RPM values for the roller
+   public static final double kRollerForwardRPM =  2000;  // Power for intaking
+   public static final double kRollerReverseRPM = -2000;  // Power for ejecting (negative)
+diff --git a/src/main/java/frc/robot/subsystems/intake/IntakeSubsystem.java b/src/main/java/frc/robot/subsystems/intake/IntakeSubsystem.java
+index 04c5e62..2da4059 100644
+--- a/src/main/java/frc/robot/subsystems/intake/IntakeSubsystem.java
++++ b/src/main/java/frc/robot/subsystems/intake/IntakeSubsystem.java
+@@ -10,6 +10,7 @@ import static edu.wpi.first.units.Units.Volts;
+ 
+ import java.util.Arrays;
+ 
++import com.ctre.phoenix6.configs.Slot0Configs;
+ import com.ctre.phoenix6.configs.TalonFXConfiguration;
+ import com.ctre.phoenix6.controls.VelocityVoltage;
+ import com.ctre.phoenix6.controls.VoltageOut;
+@@ -70,7 +71,7 @@ public class IntakeSubsystem extends SubsystemBase {
+     
+     // Initialize deploy/retract solenoid
+     deploySolenoid = new DoubleSolenoid(
+-      CANConstants.kIntakeSolenoidMotorID,
++      CANConstants.kPneumaticsHubID,
+       PneumaticsModuleType.REVPH,
+       1,
+       2
+@@ -150,16 +151,17 @@ public class IntakeSubsystem extends SubsystemBase {
+     lastTuning = current;
+ 
+     // Update the controller with the new constants
+-    TalonFXConfiguration tuneConfig = new TalonFXConfiguration();
+-    tuneConfig.Slot0
++    // Only touch Slot0. Applying a fresh TalonFXConfiguration would reset current limits,
++    // soft limits, MotionMagic, neutral mode, etc. back to factory defaults.
++    Slot0Configs slot0 = new Slot0Configs()
+       .withKP(current[0])
+       .withKI(current[1])
+       .withKD(current[2])
+       .withKS(current[3])
+       .withKV(current[4])
+       .withKA(current[5]);
+-    
+-    TalonFXFactory.applyConfig(rollerMotor, tuneConfig);
++
++    TalonFXFactory.applySlot0(rollerMotor, slot0);
+   }
+   
+   /**
+@@ -219,7 +221,7 @@ public class IntakeSubsystem extends SubsystemBase {
+     );
+ 
+     // Set the motor control request (TalonFX velocity is in RPS)
+-    rollerMotor.setControl(rollerVelocityRequest.withVelocity(targetRPM / 60.0));
++    rollerMotor.setControl(rollerVelocityRequest.withVelocity(targetRPM / 60.0 * IntakeConstants.kGearRatio));
+   }
+ 
+   /**
+@@ -228,7 +230,7 @@ public class IntakeSubsystem extends SubsystemBase {
+    */
+   private double getRollerRPM() {
+     // TalonFX velocity is in RPS, convert to RPM
+-    return rollerMotor.getVelocity().getValueAsDouble() * 60.0;
++    return rollerMotor.getVelocity().getValueAsDouble() * 60.0 / IntakeConstants.kGearRatio;
+   }
+ 
+   /**
+diff --git a/src/main/java/frc/robot/subsystems/turret/TurretConstants.java b/src/main/java/frc/robot/subsystems/turret/TurretConstants.java
+index 1363ccc..a97a05b 100644
+--- a/src/main/java/frc/robot/subsystems/turret/TurretConstants.java
++++ b/src/main/java/frc/robot/subsystems/turret/TurretConstants.java
+@@ -25,8 +25,6 @@ public final class TurretConstants {
+   // Control constants
+   // ------------------------------------------------------------
+   public static final double kAngleToleranceDegrees         =   1.0;
+-  public static final double kStallCurrentThreshold         =  25.5; // Amps - 85% of smart current limit
+-  public static final double kStallVelocityThreshold        =   1.0; // Degrees/sec - indicates motor not moving
+   public static final double kMoveTimeoutSeconds            =   3.0; // timeout for moving the turret, in seconds
+   public static final double kManualClockwiseVoltage        =  12.0;
+   public static final double kManualCounterClockwiseVoltage = -12.0;
+diff --git a/src/main/java/frc/robot/subsystems/turret/TurretSubsystem.java b/src/main/java/frc/robot/subsystems/turret/TurretSubsystem.java
+index b0d4496..38890ed 100644
+--- a/src/main/java/frc/robot/subsystems/turret/TurretSubsystem.java
++++ b/src/main/java/frc/robot/subsystems/turret/TurretSubsystem.java
+@@ -12,6 +12,7 @@ import java.util.Arrays;
+ import java.util.function.DoubleSupplier;
+ import java.util.function.Supplier;
+ 
++import com.ctre.phoenix6.configs.Slot0Configs;
+ import com.ctre.phoenix6.configs.TalonFXConfiguration;
+ import com.ctre.phoenix6.controls.MotionMagicVoltage;
+ import com.ctre.phoenix6.controls.VoltageOut;
+@@ -154,11 +155,11 @@ public class TurretSubsystem extends SubsystemBase {
+       turretSim.setState(MathUtil.clamp(pos, minRad, maxRad), 0.0);
+     }
+ 
+-    turretMotorSim.setRawRotorPosition(Conversions.degreesToRotations(
++    turretMotorSim.setRawRotorPosition(Conversions.radiansToRotations(
+       turretSim.getAngularPositionRad(), 
+       TurretConstants.kGearRatio
+     ));
+-    turretMotorSim.setRotorVelocity(Conversions.degreesToRotations(
++    turretMotorSim.setRotorVelocity(Conversions.radiansToRotations(
+       turretSim.getAngularVelocityRadPerSec(), 
+       TurretConstants.kGearRatio
+     ));
+@@ -233,16 +234,17 @@ public class TurretSubsystem extends SubsystemBase {
+     lastTuning = current;
+ 
+     // Update the controller with the new constants
+-    TalonFXConfiguration tuneConfig = new TalonFXConfiguration();
+-    tuneConfig.Slot0
++    // Only touch Slot0. Applying a fresh TalonFXConfiguration would reset current limits,
++    // soft limits, MotionMagic, neutral mode, etc. back to factory defaults.
++    Slot0Configs slot0 = new Slot0Configs()
+       .withKP(current[0])
+       .withKI(current[1])
+       .withKD(current[2])
+       .withKS(current[3])
+       .withKV(current[4])
+       .withKA(current[5]);
+-    
+-    TalonFXFactory.applyConfig(turretMotor, tuneConfig);
++
++    TalonFXFactory.applySlot0(turretMotor, slot0);
+   }
+   
+   /**
+diff --git a/src/main/java/frc/robot/subsystems/vision/VisionConstants.java b/src/main/java/frc/robot/subsystems/vision/VisionConstants.java
+index f286c2e..e423038 100644
+--- a/src/main/java/frc/robot/subsystems/vision/VisionConstants.java
++++ b/src/main/java/frc/robot/subsystems/vision/VisionConstants.java
+@@ -74,7 +74,7 @@ public final class VisionConstants {
+     ),
+     "VISION_BACK", new Transform3d(
+       new Translation3d(
+-        Units.inchesToMeters(-8),          // forward 8 inches
++        Units.inchesToMeters(-8),          // back 8 inches
+         Units.inchesToMeters(6),    // left 6 inches  
+         Units.inchesToMeters(12)    // up 12 inches 
+       ),
+diff --git a/src/main/java/frc/robot/util/TalonFXFactory.java b/src/main/java/frc/robot/util/TalonFXFactory.java
+index bccddf7..8f3ab59 100644
+--- a/src/main/java/frc/robot/util/TalonFXFactory.java
++++ b/src/main/java/frc/robot/util/TalonFXFactory.java
+@@ -5,6 +5,7 @@
+ package frc.robot.util;
+ 
+ import com.ctre.phoenix6.StatusCode;
++import com.ctre.phoenix6.configs.Slot0Configs;
+ import com.ctre.phoenix6.configs.TalonFXConfiguration;
+ import com.ctre.phoenix6.controls.Follower;
+ import com.ctre.phoenix6.hardware.TalonFX;
+@@ -40,6 +41,25 @@ public final class TalonFXFactory {
+     return status == StatusCode.OK;
+   }
+ 
++  /**
++   * Applies ONLY the Slot0 gains to a motor, with retry logic. Unlike applyConfig(), this 
++   * leaves every other setting (current limits, soft limits, MotionMagic, neutral mode, 
++   * inversion) untouched. Use this for live dashboard tuning.
++   * @param motor The TalonFX motor
++   * @param slot0 The Slot0 gains to apply
++   * @return True if the gains were applied successfully, false otherwise
++   */
++  public static boolean applySlot0(TalonFX motor, Slot0Configs slot0) {
++    StatusCode status = StatusCode.GeneralError;
++    for (int i = 0; i < 5 && status != StatusCode.OK; i++) {
++      status = motor.getConfigurator().apply(slot0);
++    }
++    if (status != StatusCode.OK) {
++      Utils.logError("Failed to apply Slot0 gains to TalonFX with device ID: " + motor.getDeviceID() + " after 5 attempts. Status: " + status);
++    }
++    return status == StatusCode.OK;
++  }
++
+   /**
+    * Creates, configures & optimizes an independent non-follower 
+    * TalonFX motor with the given device ID and configuration.

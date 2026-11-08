@@ -188,8 +188,9 @@ public class RobotContainer {
     // toggles the drive mode: field-relative vs robot-relative
     RobotModeTriggers.teleop().and(driverXbox.back()).onTrue(driveSubsystem.toggleFieldRelativeCommand());
 
-    // re-zero field-relative heading only (keeps the vision/odometry position)
-    RobotModeTriggers.teleop().and(driverXbox.start()).onTrue(driveSubsystem.seedHeadingForAllianceCommand());
+    // re-zero field-relative heading only (keeps the vision/odometry position).
+    // Point the robot away from the driver station first.
+    RobotModeTriggers.teleop().and(driverXbox.start()).onTrue(driveSubsystem.resetHeadingCommand());
 
     // teleop button bindings
     RobotModeTriggers.teleop().and(driverXbox.a()).onTrue(Commands.none());

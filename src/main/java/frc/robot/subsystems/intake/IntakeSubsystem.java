@@ -10,6 +10,7 @@ import static edu.wpi.first.units.Units.Volts;
 
 import java.util.Arrays;
 
+import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.VelocityVoltage;
 import com.ctre.phoenix6.controls.VoltageOut;
@@ -70,7 +71,7 @@ public class IntakeSubsystem extends SubsystemBase {
     
     // Initialize deploy/retract solenoid
     deploySolenoid = new DoubleSolenoid(
-      CANConstants.kIntakeSolenoidMotorID,
+      CANConstants.kPneumaticsHubID,
       PneumaticsModuleType.REVPH,
       1,
       2
@@ -150,16 +151,17 @@ public class IntakeSubsystem extends SubsystemBase {
     lastTuning = current;
 
     // Update the controller with the new constants
-    TalonFXConfiguration tuneConfig = new TalonFXConfiguration();
-    tuneConfig.Slot0
+    // Only touch Slot0. Applying a fresh TalonFXConfiguration would reset current limits,
+    // soft limits, MotionMagic, neutral mode, etc. back to factory defaults.
+    Slot0Configs slot0 = new Slot0Configs()
       .withKP(current[0])
       .withKI(current[1])
       .withKD(current[2])
       .withKS(current[3])
       .withKV(current[4])
       .withKA(current[5]);
-    
-    TalonFXFactory.applyConfig(rollerMotor, tuneConfig);
+
+    TalonFXFactory.applySlot0(rollerMotor, slot0);
   }
   
   /**
@@ -219,7 +221,7 @@ public class IntakeSubsystem extends SubsystemBase {
     );
 
     // Set the motor control request (TalonFX velocity is in RPS)
-    rollerMotor.setControl(rollerVelocityRequest.withVelocity(targetRPM / 60.0));
+    rollerMotor.setControl(rollerVelocityRequest.withVelocity(targetRPM / 60.0 * IntakeConstants.kGearRatio));
   }
 
   /**
@@ -228,7 +230,7 @@ public class IntakeSubsystem extends SubsystemBase {
    */
   private double getRollerRPM() {
     // TalonFX velocity is in RPS, convert to RPM
-    return rollerMotor.getVelocity().getValueAsDouble() * 60.0;
+    return rollerMotor.getVelocity().getValueAsDouble() * 60.0 / IntakeConstants.kGearRatio;
   }
 
   /**

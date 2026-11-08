@@ -9,6 +9,8 @@ package frc.robot.subsystems.intake;
  * All values should be tuned based on your specific robot
  */
 public final class IntakeConstants {
+  public static final double kGearRatio = 1.0; // Motor rotations per roller rotation (1.0 = direct). RPM values below are ROLLER RPM.
+
   // Motor power RPM values for the roller
   public static final double kRollerForwardRPM =  2000;  // Power for intaking
   public static final double kRollerReverseRPM = -2000;  // Power for ejecting (negative)

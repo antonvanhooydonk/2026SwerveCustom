@@ -10,6 +10,7 @@ import static edu.wpi.first.units.Units.Volts;
 
 import java.util.Arrays;
 
+import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.MotionMagicVoltage;
 import com.ctre.phoenix6.controls.VoltageOut;
@@ -230,8 +231,9 @@ public class ElevatorSubsystem extends SubsystemBase {
     lastTuning = current;
     
     // Update the controller with the new constants
-    TalonFXConfiguration tuneConfig = new TalonFXConfiguration();
-    tuneConfig.Slot0
+    // Only touch Slot0. Applying a fresh TalonFXConfiguration would reset current limits,
+    // soft limits, MotionMagic, neutral mode, etc. back to factory defaults.
+    Slot0Configs slot0 = new Slot0Configs()
       .withKP(current[0])
       .withKI(current[1])
       .withKD(current[2])
@@ -240,9 +242,9 @@ public class ElevatorSubsystem extends SubsystemBase {
       .withKA(current[5])
       .withKG(current[6])
       .withGravityType(GravityTypeValue.Elevator_Static);
-    
-    TalonFXFactory.applyConfig(leaderMotor, tuneConfig);
-    TalonFXFactory.applyConfig(followerMotor, tuneConfig);
+
+    TalonFXFactory.applySlot0(leaderMotor, slot0);
+    TalonFXFactory.applySlot0(followerMotor, slot0);
   }
   
   /**

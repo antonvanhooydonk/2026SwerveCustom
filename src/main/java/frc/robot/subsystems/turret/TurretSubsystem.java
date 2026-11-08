@@ -12,6 +12,7 @@ import java.util.Arrays;
 import java.util.function.DoubleSupplier;
 import java.util.function.Supplier;
 
+import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.MotionMagicVoltage;
 import com.ctre.phoenix6.controls.VoltageOut;
@@ -154,11 +155,11 @@ public class TurretSubsystem extends SubsystemBase {
       turretSim.setState(MathUtil.clamp(pos, minRad, maxRad), 0.0);
     }
 
-    turretMotorSim.setRawRotorPosition(Conversions.degreesToRotations(
+    turretMotorSim.setRawRotorPosition(Conversions.radiansToRotations(
       turretSim.getAngularPositionRad(), 
       TurretConstants.kGearRatio
     ));
-    turretMotorSim.setRotorVelocity(Conversions.degreesToRotations(
+    turretMotorSim.setRotorVelocity(Conversions.radiansToRotations(
       turretSim.getAngularVelocityRadPerSec(), 
       TurretConstants.kGearRatio
     ));
@@ -233,16 +234,17 @@ public class TurretSubsystem extends SubsystemBase {
     lastTuning = current;
 
     // Update the controller with the new constants
-    TalonFXConfiguration tuneConfig = new TalonFXConfiguration();
-    tuneConfig.Slot0
+    // Only touch Slot0. Applying a fresh TalonFXConfiguration would reset current limits,
+    // soft limits, MotionMagic, neutral mode, etc. back to factory defaults.
+    Slot0Configs slot0 = new Slot0Configs()
       .withKP(current[0])
       .withKI(current[1])
       .withKD(current[2])
       .withKS(current[3])
       .withKV(current[4])
       .withKA(current[5]);
-    
-    TalonFXFactory.applyConfig(turretMotor, tuneConfig);
+
+    TalonFXFactory.applySlot0(turretMotor, slot0);
   }
   
   /**

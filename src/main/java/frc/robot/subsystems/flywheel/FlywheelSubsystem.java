@@ -11,6 +11,7 @@ import static edu.wpi.first.units.Units.Volts;
 import java.util.Arrays;
 import java.util.function.Supplier;
 
+import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.VelocityVoltage;
 import com.ctre.phoenix6.controls.VoltageOut;
@@ -129,7 +130,7 @@ public class FlywheelSubsystem extends SubsystemBase {
     rpmTable.put(7.0, 5000.0); 
     rpmTable.put(8.0, 5500.0); 
     rpmTable.put(9.0, 5500.0); 
-    rpmTable.put(10.0, 6000.0); 
+    rpmTable.put(10.0, FlywheelConstants.kFlywheelMaxRPM); 
   }
 
   @Override
@@ -174,17 +175,18 @@ public class FlywheelSubsystem extends SubsystemBase {
     lastTuning = current;
 
     // Update the controller with the new constants
-    TalonFXConfiguration tuneConfig = new TalonFXConfiguration();
-    tuneConfig.Slot0
+    // Only touch Slot0. Applying a fresh TalonFXConfiguration would reset current limits,
+    // soft limits, MotionMagic, neutral mode, etc. back to factory defaults.
+    Slot0Configs slot0 = new Slot0Configs()
       .withKP(current[0])
       .withKI(current[1])
       .withKD(current[2])
       .withKS(current[3])
       .withKV(current[4])
       .withKA(current[5]);
-    
-    TalonFXFactory.applyConfig(flywheelLeader, tuneConfig);
-    TalonFXFactory.applyConfig(flywheelFollower, tuneConfig);
+
+    TalonFXFactory.applySlot0(flywheelLeader, slot0);
+    TalonFXFactory.applySlot0(flywheelFollower, slot0);
   }
   
   /**
@@ -244,7 +246,7 @@ public class FlywheelSubsystem extends SubsystemBase {
     );
 
     // Set the flywheel velocity (TalonFX velocity is in RPS, convert RPM to RPS)
-    flywheelLeader.setControl(flywheelVelocityRequest.withVelocity(targetRPM / 60.0));
+    flywheelLeader.setControl(flywheelVelocityRequest.withVelocity(targetRPM / 60.0 * FlywheelConstants.kGearRatio));
   }
 
   /**
@@ -253,7 +255,7 @@ public class FlywheelSubsystem extends SubsystemBase {
    */
   private double getRPM() {
     // TalonFX velocity is in RPS, convert to RPM
-    return flywheelLeader.getVelocity().getValueAsDouble() * 60.0;
+    return flywheelLeader.getVelocity().getValueAsDouble() * 60.0 / FlywheelConstants.kGearRatio;
   }
 
   /**
