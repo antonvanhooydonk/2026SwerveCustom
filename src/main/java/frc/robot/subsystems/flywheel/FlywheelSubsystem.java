@@ -33,6 +33,7 @@ import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 
 import frc.robot.Constants.CANConstants;
 import frc.robot.Constants.TuningConstants;
+import frc.robot.util.Conversions;
 import frc.robot.util.ShotCalculator;
 import frc.robot.util.TalonFXFactory;
 import frc.robot.util.TalonFXFactory.MotorPair;
@@ -245,8 +246,11 @@ public class FlywheelSubsystem extends SubsystemBase {
       FlywheelConstants.kFlywheelMaxRPM
     );
 
+    // Convert target RPM to RPS for TalonFX velocity control
+    double rps = Conversions.rpmToRps(targetRPM, FlywheelConstants.kGearRatio);
+
     // Set the flywheel velocity (TalonFX velocity is in RPS, convert RPM to RPS)
-    flywheelLeader.setControl(flywheelVelocityRequest.withVelocity(targetRPM / 60.0 * FlywheelConstants.kGearRatio));
+    flywheelLeader.setControl(flywheelVelocityRequest.withVelocity(rps));
   }
 
   /**
@@ -254,8 +258,10 @@ public class FlywheelSubsystem extends SubsystemBase {
    * @return Current velocity in RPM
    */
   private double getRPM() {
-    // TalonFX velocity is in RPS, convert to RPM
-    return flywheelLeader.getVelocity().getValueAsDouble() * 60.0 / FlywheelConstants.kGearRatio;
+    return Conversions.rpsToRpm(
+      flywheelLeader.getVelocity().getValueAsDouble(), 
+      FlywheelConstants.kGearRatio
+    );
   }
 
   /**

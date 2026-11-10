@@ -32,6 +32,7 @@ import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 
 import frc.robot.Constants.CANConstants;
 import frc.robot.Constants.TuningConstants;
+import frc.robot.util.Conversions;
 import frc.robot.util.TalonFXFactory;
 import frc.robot.util.Utils;
 
@@ -220,8 +221,11 @@ public class IntakeSubsystem extends SubsystemBase {
       IntakeConstants.kRollerMaxRPM
     );
 
+    // Convert target RPM to RPS for TalonFX velocity control
+    double rps = Conversions.rpmToRps(targetRPM, IntakeConstants.kGearRatio);
+
     // Set the motor control request (TalonFX velocity is in RPS)
-    rollerMotor.setControl(rollerVelocityRequest.withVelocity(targetRPM / 60.0 * IntakeConstants.kGearRatio));
+    rollerMotor.setControl(rollerVelocityRequest.withVelocity(rps));
   }
 
   /**
@@ -229,8 +233,10 @@ public class IntakeSubsystem extends SubsystemBase {
    * @return Current velocity in RPM
    */
   private double getRollerRPM() {
-    // TalonFX velocity is in RPS, convert to RPM
-    return rollerMotor.getVelocity().getValueAsDouble() * 60.0 / IntakeConstants.kGearRatio;
+    return Conversions.rpsToRpm(
+      rollerMotor.getVelocity().getValueAsDouble(), 
+      IntakeConstants.kGearRatio
+    );
   }
 
   /**

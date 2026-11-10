@@ -45,6 +45,28 @@ public final class Conversions {
     return (meters / circumferenceMeters) * gearRatio;
   }
 
+  /**
+   * Converts motor rotations per minute (RPM) to rotations per second (RPS),
+   * accounting for gear ratio
+   * @param rpm Rotations per minute (RPM) at the motor shaft
+   * @param gearRatio The gear ratio (motor rotations per output rotation)
+   * @return Rotations per second (RPS) at the output shaft
+   */
+  public static double rpmToRps(double rpm, double gearRatio) {
+    return (rpm / 60.0) * gearRatio;
+  }
+
+  /**
+   * Converts rotations per second (RPS) to rotations per minute (RPM),
+   * accounting for gear ratio
+   * @param rps Rotations per second (RPS) at the output shaft
+   * @param gearRatio The gear ratio (motor rotations per output rotation)
+   * @return Rotations per minute (RPM) at the motor shaft
+   */
+  public static double rpsToRpm(double rps, double gearRatio) {
+    return (rps * 60.0) / gearRatio;
+  }
+
   // ============================================================
   // Angle to rotation conversions
   // ============================================================

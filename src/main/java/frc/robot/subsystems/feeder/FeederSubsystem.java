@@ -29,6 +29,7 @@ import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 
 import frc.robot.Constants.CANConstants;
 import frc.robot.Constants.TuningConstants;
+import frc.robot.util.Conversions;
 import frc.robot.util.TalonFXFactory;
 import frc.robot.util.Utils;
 
@@ -204,8 +205,11 @@ public class FeederSubsystem extends SubsystemBase {
       FeederConstants.kFeederMaxRPM
     );
 
+    // Convert target RPM to RPS for TalonFX velocity control
+    double rps = Conversions.rpmToRps(targetRPM, FeederConstants.kGearRatio);
+
     // Set the feeder velocity (TalonFX velocity is in RPS, convert RPM to RPS)
-    feederMotor.setControl(feederVelocityRequest.withVelocity(targetRPM / 60.0 * FeederConstants.kGearRatio));
+    feederMotor.setControl(feederVelocityRequest.withVelocity(rps));
   }
 
   /**
@@ -213,8 +217,10 @@ public class FeederSubsystem extends SubsystemBase {
    * @return Current velocity in RPM
    */
   private double getRPM() {
-    // TalonFX velocity is in RPS, convert to RPM
-    return feederMotor.getVelocity().getValueAsDouble() * 60.0 / FeederConstants.kGearRatio;
+    return Conversions.rpsToRpm(
+      feederMotor.getVelocity().getValueAsDouble(), 
+      FeederConstants.kGearRatio
+    );
   }
 
   /**
