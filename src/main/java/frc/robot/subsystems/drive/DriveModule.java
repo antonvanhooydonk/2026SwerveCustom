@@ -531,10 +531,7 @@ public class DriveModule implements Sendable {
     targetState.angle = Rotation2d.fromRadians(wrapped);
 
     // Convert the angle to motor rotations
-    double rotations = Conversions.radiansToRotations(
-      wrapped, 
-      DriveConstants.kSteerGearRatio
-    );
+    double rotations = Conversions.radiansToRotations(wrapped, DriveConstants.kSteerGearRatio);
 
     // Command the steering motor to the desired angle
     steerPIDController.setSetpoint(rotations, SparkMax.ControlType.kPosition);
