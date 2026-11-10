@@ -85,7 +85,7 @@ public final class Conversions {
    * @param gearRatio Motor rotations per wheel rotation
    * @return Motor position in rotations
    */
-  public static double degreesToRotations(double degrees, double gearRatio) {
+  public static double degreesToRotations(double degrees, double gearRatio) {   
     return (degrees / 360.0) * gearRatio;
   }
 }
