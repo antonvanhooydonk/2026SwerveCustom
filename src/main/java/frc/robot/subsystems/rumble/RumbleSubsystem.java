@@ -57,7 +57,7 @@ public class RumbleSubsystem extends SubsystemBase {
    * Cancels the currently running command on the Rumble subsystem, if any.
    * The default command will take over after cancellation.
    */
-  private void cancelCurrentCommand() {
+  private void cancelCurrent() {
     Command current = getCurrentCommand();
     if (current != null) {
       current.cancel();
@@ -79,7 +79,7 @@ public class RumbleSubsystem extends SubsystemBase {
    * Initializes the Rumble subsystem at the start of the autonomous phase.
    */
   public void autonomousInit() {
-    cancelCurrentCommand();
+    cancelCurrent();
     Utils.logInfo("Rumble subsystem initialized for autonomous");
   }
 
@@ -87,7 +87,7 @@ public class RumbleSubsystem extends SubsystemBase {
    * Initializes the Rumble subsystem at the start of the teleop phase.
    */
   public void teleopInit() {
-    cancelCurrentCommand();
+    cancelCurrent();
     Utils.logInfo("Rumble subsystem initialized for teleop");
   }
 
@@ -95,7 +95,7 @@ public class RumbleSubsystem extends SubsystemBase {
    * Initializes the Rumble subsystem for post match (disabled) state.
    */
   public void postMatch() {
-    cancelCurrentCommand();
+    cancelCurrent();
     Utils.logInfo("Rumble subsystem initialized for post match");
   }
 

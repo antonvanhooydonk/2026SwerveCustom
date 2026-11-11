@@ -48,12 +48,22 @@ public class LEDSubsystem extends SubsystemBase {
   // ----------------------------------------------------------------------------------------
   // Private state methods
   // ----------------------------------------------------------------------------------------
+  
+  /**
+   * Applies the specified LED pattern to the LED strip.
+   * The pattern's brightness is adjusted dimmed for
+   * photo-sensitivity reasons prior to display.
+   * @param pattern The LED pattern to apply
+   */
+  private void runPattern(LEDPattern pattern) {
+    pattern.atBrightness(LEDConstants.kBrightness).applyTo(ledBuffer);
+  }
 
   /**
    * Cancels the currently running command on the LED subsystem, if any.
    * The default command will take over after cancellation.
    */
-  private void cancelCurrentCommand() {
+  private void cancelCurrent() {
     Command current = getCurrentCommand();
     if (current != null) {
       current.cancel();
@@ -112,7 +122,7 @@ public class LEDSubsystem extends SubsystemBase {
    * Initializes the LED subsystem at the start of the autonomous phase.
    */
   public void autonomousInit() {
-    cancelCurrentCommand();
+    cancelCurrent();
     Utils.logInfo("LED subsystem initialized for autonomous");
   }
 
@@ -120,7 +130,7 @@ public class LEDSubsystem extends SubsystemBase {
    * Initializes the LED subsystem at the start of the teleop phase.
    */
   public void teleopInit() {
-    cancelCurrentCommand();
+    cancelCurrent();
     Utils.logInfo("LED subsystem initialized for teleop");
   }
 
@@ -128,29 +138,23 @@ public class LEDSubsystem extends SubsystemBase {
    * Initializes the LED subsystem for post match (disabled) state.
    */
   public void postMatch() {
-    cancelCurrentCommand();
+    cancelCurrent();
     Utils.logInfo("LED subsystem initialized for post match");
-  }
-
-  // ----------------------------------------------------------------------------------------
-  // Private Command Factory Methods
-  // ----------------------------------------------------------------------------------------
-
-  /**
-   * Applies animated or solid patterns to the LED strip.
-   * Append .withTimeout() to the returned command to have it run for a specific duration.
-   * @param pattern The LED pattern to apply
-   * @return Command that applies the specified LED pattern
-   */
-  private Command runPatternCommand(LEDPattern pattern) {
-    LEDPattern dimmed = pattern.atBrightness(LEDConstants.kBrightness);
-    return run(() -> dimmed.applyTo(ledBuffer))
-      .ignoringDisable(true);
   }
 
   // ----------------------------------------------------------------------------------------
   // Public Command Factory Methods
   // ----------------------------------------------------------------------------------------
+  
+  /**
+   * Applies simple animated or solid patterns to the LED strip.
+   * Append .withTimeout() to the returned command to have it run for a specific duration.
+   * @param pattern The LED pattern to apply
+   * @return Command that applies the specified LED pattern
+   */
+  public Command runPatternCommand(LEDPattern pattern) {
+    return run(() -> runPattern(pattern)).ignoringDisable(true);
+  }
 
   /**
    * Command to set the LED strip off until another command takes over
