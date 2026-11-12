@@ -181,7 +181,7 @@ public class RumbleSubsystem extends SubsystemBase {
    * @return Command that does a left rumble
    */
   public Command leftRumbleCommand() {
-    return setRumbleCommand(RumbleConstants.kStrong, 0.4, RumbleType.kLeftRumble)
+    return setRumbleCommand(RumbleConstants.kMedium, 0.4, RumbleType.kLeftRumble)
       .withName("Rumble_Left");
   }
   
@@ -190,7 +190,7 @@ public class RumbleSubsystem extends SubsystemBase {
    * @return Command that does a right rumble
    */
   public Command rightRumbleCommand() {
-    return setRumbleCommand(RumbleConstants.kStrong, 0.4, RumbleType.kRightRumble)
+    return setRumbleCommand(RumbleConstants.kMedium, 0.4, RumbleType.kRightRumble)
       .withName("Rumble_Right");
   }
 }
