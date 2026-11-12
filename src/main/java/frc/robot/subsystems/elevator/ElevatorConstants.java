@@ -32,9 +32,9 @@ public final class ElevatorConstants {
   // Control constants
   // ------------------------------------------------------------
   public static final double kHeightToleranceMeters   = Units.inchesToMeters(0.5); // Tolerance for isAtTarget
-  public static final double kMoveTimeoutSeconds      =   3.0;
-  public static final double kManualUpVoltage         =  12.0;   // Voltage for manual up control
-  public static final double kManualDownVoltage       = -12.0;   // Voltage for manual down control
+  public static final double kMoveTimeoutSeconds      =  3.0;
+  public static final double kManualUpVoltage         =  6.0;   // Voltage for manual up control
+  public static final double kManualDownVoltage       = -6.0;   // Voltage for manual down control
 
   // ------------------------------------------------------------
   // MotionMagic constraints
