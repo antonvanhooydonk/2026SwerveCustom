@@ -109,7 +109,7 @@ public class RumbleSubsystem extends SubsystemBase {
    * @param duration Duration in seconds (0.0 to 10.0)
    * @return Command that rumbles then stops
    */
-  public Command rumbleCommand(double intensity, double duration) {
+  public Command setRumbleCommand(double intensity, double duration) {
     return run(() -> setRumble(intensity))
       .withTimeout(MathUtil.clamp(duration, 0.0, 10.0))
       .finallyDo(this::off)
@@ -131,7 +131,7 @@ public class RumbleSubsystem extends SubsystemBase {
    * @return Command that does a quick rumble
    */
   public Command quickCommand() {
-    return rumbleCommand(0.5, 0.2)
+    return setRumbleCommand(0.5, 0.2)
       .withName("Rumble_Quick");
   }
   
@@ -140,7 +140,7 @@ public class RumbleSubsystem extends SubsystemBase {
    * @return Command that does a medium rumble
    */
   public Command mediumCommand() {
-    return rumbleCommand(0.7, 0.4)
+    return setRumbleCommand(0.7, 0.4)
       .withName("Rumble_Medium");
   }
   
@@ -149,7 +149,7 @@ public class RumbleSubsystem extends SubsystemBase {
    * @return Command that does a strong rumble
    */
   public Command strongCommand() {
-    return rumbleCommand(1.0, 0.4)
+    return setRumbleCommand(1.0, 0.4)
       .withName("Rumble_Strong");
   }
   
@@ -158,9 +158,9 @@ public class RumbleSubsystem extends SubsystemBase {
    * @return Command that rumbles twice
    */
   public Command doubleCommand() {
-    return rumbleCommand(0.7, 0.15)
+    return setRumbleCommand(0.7, 0.15)
       .andThen(Commands.waitSeconds(0.1))
-      .andThen(rumbleCommand(0.7, 0.15))
+      .andThen(setRumbleCommand(0.7, 0.15))
       .withName("Rumble_Double");
   }
 }
