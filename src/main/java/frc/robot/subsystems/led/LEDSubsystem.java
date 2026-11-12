@@ -55,7 +55,7 @@ public class LEDSubsystem extends SubsystemBase {
    * photo-sensitivity reasons prior to display.
    * @param pattern The LED pattern to apply
    */
-  private void runPattern(LEDPattern pattern) {
+  private void setPattern(LEDPattern pattern) {
     pattern.atBrightness(LEDConstants.kBrightness).applyTo(ledBuffer);
   }
 
@@ -68,50 +68,6 @@ public class LEDSubsystem extends SubsystemBase {
     if (current != null) {
       current.cancel();
     }
-  }
-
-  // ----------------------------------------------------------------------------------------
-  // Predefined LED patterns
-  // ----------------------------------------------------------------------------------------
-
-  /**
-   * Returns a pattern that turns off all LEDs (black).
-   * @return LEDPattern that turns off all LEDs
-   */
-  private LEDPattern offPattern() {
-    return LEDPattern.solid(Color.kBlack);
-  }
-
-  /**
-   * Returns a solid lime pattern that indicates success.
-   * @return LEDPattern that indicates success
-   */
-  private LEDPattern successPattern() {
-    return LEDPattern.solid(Color.kLime);
-  }
-
-  /**
-   * Returns a solid cyan pattern that indicates information.
-   * @return LEDPattern that indicates information
-   */
-  private LEDPattern infoPattern() {
-    return LEDPattern.solid(Color.kCyan);
-  }
-
-  /**
-   * Returns a solid gold pattern that indicates a warning.
-   * @return LEDPattern that indicates a warning
-   */
-  private LEDPattern warningPattern() {
-    return LEDPattern.solid(Color.kGold);
-  }
-
-  /**
-   * Returns a solid magenta pattern that indicates an error.
-   * @return LEDPattern that indicates an error
-   */
-  private LEDPattern errorPattern() {
-    return LEDPattern.solid(Color.kMagenta);
   }
 
   // ----------------------------------------------------------------------------------------
@@ -152,8 +108,10 @@ public class LEDSubsystem extends SubsystemBase {
    * @param pattern The LED pattern to apply
    * @return Command that applies the specified LED pattern
    */
-  public Command runPatternCommand(LEDPattern pattern) {
-    return run(() -> runPattern(pattern)).ignoringDisable(true);
+  public Command setPatternCommand(LEDPattern pattern) {
+    return run(() -> setPattern(pattern))
+      .ignoringDisable(true)
+      .withName("LED_Custom");
   }
 
   /**
@@ -161,7 +119,8 @@ public class LEDSubsystem extends SubsystemBase {
    * @return Command that sets LED display off
    */
   public Command offCommand() {
-    return runPatternCommand(offPattern()).withName("LED_Off");
+    return setPatternCommand(LEDPattern.solid(Color.kBlack))
+      .withName("LED_Off");
   }
   
   /**
@@ -169,7 +128,7 @@ public class LEDSubsystem extends SubsystemBase {
    * @return Command with success LED
    */
   public Command successCommand() {
-    return runPatternCommand(successPattern())
+    return setPatternCommand(LEDPattern.solid(Color.kLime))
       .withTimeout(1.0)
       .withName("LED_Success");
   }
@@ -179,7 +138,7 @@ public class LEDSubsystem extends SubsystemBase {
    * @return Command with info LED
    */
   public Command infoCommand() {
-    return runPatternCommand(infoPattern())
+    return setPatternCommand(LEDPattern.solid(Color.kCyan))
       .withTimeout(1.0)
       .withName("LED_Info");
   }
@@ -189,7 +148,7 @@ public class LEDSubsystem extends SubsystemBase {
    * @return Command with warning LED
    */
   public Command warningCommand() {
-    return runPatternCommand(warningPattern())
+    return setPatternCommand(LEDPattern.solid(Color.kGold))
       .withTimeout(1.0)
       .withName("LED_Warning");
   }
@@ -199,6 +158,7 @@ public class LEDSubsystem extends SubsystemBase {
    * @return Command with error LED
    */
   public Command errorCommand() {
-    return runPatternCommand(errorPattern()).withName("LED_Error");
+    return setPatternCommand(LEDPattern.solid(Color.kMagenta))
+      .withName("LED_Error");
   }
 }

@@ -29,7 +29,7 @@ public class RumbleSubsystem extends SubsystemBase {
     this.controller = controller;
 
     // Set subsystem default command to stop rumble when no other command is running
-    setDefaultCommand(stopCommand());
+    setDefaultCommand(offCommand());
     
     // Output initialization progress
     Utils.logInfo("Rumble subsystem initialized");
@@ -65,9 +65,9 @@ public class RumbleSubsystem extends SubsystemBase {
   }
 
   /**
-   * Stop controller rumble
+   * Turns off rumble
    */
-  private void stop() {
+  private void off() {
     setRumble(0);
   }
   
@@ -112,7 +112,8 @@ public class RumbleSubsystem extends SubsystemBase {
   public Command rumbleCommand(double intensity, double duration) {
     return run(() -> setRumble(intensity))
       .withTimeout(MathUtil.clamp(duration, 0.0, 10.0))
-      .finallyDo(this::stop)
+      .finallyDo(this::off)
+      .ignoringDisable(true)
       .withName("Rumble_Custom");
   }
   
@@ -120,9 +121,9 @@ public class RumbleSubsystem extends SubsystemBase {
    * Command to stop rumble
    * @return Command that stops the rumble
    */
-  public Command stopCommand() {
-    return run(this::stop)
-      .withName("Rumble_Stop");
+  public Command offCommand() {
+    return run(this::off)
+      .withName("Rumble_Off");
   }
   
   /**
