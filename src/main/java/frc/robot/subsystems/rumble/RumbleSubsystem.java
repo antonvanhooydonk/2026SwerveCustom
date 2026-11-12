@@ -45,11 +45,12 @@ public class RumbleSubsystem extends SubsystemBase {
   /**
    * Set controller rumble
    * @param intensity Rumble intensity (0.0 to 1.0)
+   * @param rumbleType The type of rumble (left, right, or both)
    */
-  private void setRumble(double intensity) {
+  private void setRumble(double intensity, RumbleType rumbleType) {
     if (controller != null) {
       double clampedIntensity = MathUtil.clamp(intensity, 0.0, 1.0);
-      controller.getHID().setRumble(RumbleType.kBothRumble, clampedIntensity);
+      controller.getHID().setRumble(rumbleType, clampedIntensity);
     }
   }
 
@@ -68,7 +69,7 @@ public class RumbleSubsystem extends SubsystemBase {
    * Turns off rumble
    */
   private void off() {
-    setRumble(0);
+    setRumble(0, RumbleType.kBothRumble);
   }
   
   // ----------------------------------------------------------------------------------------
@@ -105,12 +106,23 @@ public class RumbleSubsystem extends SubsystemBase {
 
   /**
    * Command to rumble controller for a duration and then stop
-   * @param intensity Rumble intensity (0.0 to 1.0)
-   * @param duration Duration in seconds (0.0 to 10.0)
+   * @param intensity The rumble intensity (0.0 to 1.0)
+   * @param duration The duration of the rumble in seconds (0.0 to 10.0)
    * @return Command that rumbles then stops
    */
   public Command setRumbleCommand(double intensity, double duration) {
-    return run(() -> setRumble(intensity))
+    return setRumbleCommand(intensity, duration, RumbleType.kBothRumble);
+  }
+
+  /**
+   * Command to rumble controller for a duration and then stop
+   * @param intensity Rumble intensity (0.0 to 1.0)
+   * @param duration Duration in seconds (0.0 to 10.0)
+   * @param rumbleType The type of rumble (left, right, or both)
+   * @return Command that rumbles then stops
+   */
+  public Command setRumbleCommand(double intensity, double duration, RumbleType rumbleType) {
+    return run(() -> setRumble(intensity, rumbleType))
       .withTimeout(MathUtil.clamp(duration, 0.0, 10.0))
       .finallyDo(this::off)
       .ignoringDisable(true)
@@ -131,7 +143,7 @@ public class RumbleSubsystem extends SubsystemBase {
    * @return Command that does a quick rumble
    */
   public Command quickCommand() {
-    return setRumbleCommand(0.5, 0.2)
+    return setRumbleCommand(RumbleConstants.kLight, 0.2)
       .withName("Rumble_Quick");
   }
   
@@ -140,7 +152,7 @@ public class RumbleSubsystem extends SubsystemBase {
    * @return Command that does a medium rumble
    */
   public Command mediumCommand() {
-    return setRumbleCommand(0.7, 0.4)
+    return setRumbleCommand(RumbleConstants.kMedium, 0.4)
       .withName("Rumble_Medium");
   }
   
@@ -149,7 +161,7 @@ public class RumbleSubsystem extends SubsystemBase {
    * @return Command that does a strong rumble
    */
   public Command strongCommand() {
-    return setRumbleCommand(1.0, 0.4)
+    return setRumbleCommand(RumbleConstants.kStrong, 0.4)
       .withName("Rumble_Strong");
   }
   
@@ -158,9 +170,27 @@ public class RumbleSubsystem extends SubsystemBase {
    * @return Command that rumbles twice
    */
   public Command doubleCommand() {
-    return setRumbleCommand(0.7, 0.15)
+    return setRumbleCommand(RumbleConstants.kMedium, 0.15)
       .andThen(Commands.waitSeconds(0.1))
-      .andThen(setRumbleCommand(0.7, 0.15))
+      .andThen(setRumbleCommand(RumbleConstants.kMedium, 0.15))
       .withName("Rumble_Double");
+  }
+  
+  /**
+   * Command for left rumble pulse
+   * @return Command that does a left rumble
+   */
+  public Command leftRumbleCommand() {
+    return setRumbleCommand(RumbleConstants.kStrong, 0.4, RumbleType.kLeftRumble)
+      .withName("Rumble_Left");
+  }
+  
+  /**
+   * Command for right rumble pulse
+   * @return Command that does a right rumble
+   */
+  public Command rightRumbleCommand() {
+    return setRumbleCommand(RumbleConstants.kStrong, 0.4, RumbleType.kRightRumble)
+      .withName("Rumble_Right");
   }
 }
