@@ -33,11 +33,11 @@ import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 
 import frc.robot.Constants.CANConstants;
 import frc.robot.Constants.TuningConstants;
-import frc.robot.util.Conversions;
-import frc.robot.util.ShotCalculator;
-import frc.robot.util.TalonFXFactory;
-import frc.robot.util.TalonFXFactory.MotorPair;
-import frc.robot.util.Utils;
+import frc.robot.shared.Conversions;
+import frc.robot.shared.ShotCalculator;
+import frc.robot.shared.TalonFXFactory;
+import frc.robot.shared.Utils;
+import frc.robot.shared.TalonFXFactory.MotorPair;
 
 /**
  * Flywheel subsystem using dual Kraken X60 (TalonFX) motors in a

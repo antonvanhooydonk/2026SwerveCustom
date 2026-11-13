@@ -19,7 +19,7 @@ import edu.wpi.first.wpilibj.RobotBase;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 
-import frc.robot.util.Utils;
+import frc.robot.shared.Utils;
 
 /**
  * Wrapper class for NavX3-CAN gyro that is used by the robot's swerve drive.

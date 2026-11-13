@@ -48,10 +48,11 @@ import edu.wpi.first.wpilibj.RobotController;
 import edu.wpi.first.wpilibj.simulation.DCMotorSim;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 
-import frc.robot.util.Conversions;
-import frc.robot.util.SparkMaxFactory;
-import frc.robot.util.TalonFXFactory;
-import frc.robot.util.Utils;
+import frc.robot.shared.AbsoluteEncoder;
+import frc.robot.shared.Conversions;
+import frc.robot.shared.SparkMaxFactory;
+import frc.robot.shared.TalonFXFactory;
+import frc.robot.shared.Utils;
 
 /**
  * Represents a single swerve drive module with a Kraken x60 drive motor
