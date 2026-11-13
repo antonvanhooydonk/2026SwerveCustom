@@ -10,7 +10,9 @@ import static edu.wpi.first.units.Units.Volts;
 
 import java.util.Arrays;
 
+import com.revrobotics.PersistMode;
 import com.revrobotics.RelativeEncoder;
+import com.revrobotics.ResetMode;
 import com.revrobotics.spark.SparkBase.ControlType;
 import com.revrobotics.spark.SparkClosedLoopController;
 import com.revrobotics.spark.SparkMax;
@@ -141,9 +143,16 @@ public class ClimberSubsystem extends SubsystemBase {
         .kV(current[4])
         .kA(current[5]);
     
-    SparkMaxFactory.patchConfig(climberMotor, tuneConfig);
+    // Apply the new configuration to the climber motor
+    // without resetting or persisting parameters
+    SparkMaxFactory.applyConfig(
+      climberMotor, 
+      tuneConfig, 
+      ResetMode.kNoResetSafeParameters, 
+      PersistMode.kNoPersistParameters
+    );
   }
-  
+
   /**
    * Configure the subsystem motors with the appropriate settings
    */

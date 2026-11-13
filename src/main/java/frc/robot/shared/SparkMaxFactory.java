@@ -22,9 +22,9 @@ public final class SparkMaxFactory {
   public record MotorPair(SparkMax leader, SparkMax follower) {}
 
   /**
-   * Applies a SparkMax configuration to a motor with retry logic.
-   * This method will merge the given configuration with any 
-   * existing configuration applied to the motor.
+   * Applies a partial SparkMax configuration to a motor with retry logic.
+   * This method will merge the given configuration with any existing 
+   * configuration applied to the motor and persist the changes.
    * @param motor The SparkMax motor
    * @param config The SparkMax configuration
    * @return True if the configuration was applied successfully, false otherwise
