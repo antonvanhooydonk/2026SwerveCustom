@@ -323,7 +323,7 @@ public class DriveSubsystem extends SubsystemBase {
     DriveFeedforwards ff = (validSpeeds && isValidFeedforwards(feedforwards)) ? feedforwards : kZeroFeedforwards;
     
     // Copy so we never modify PathPlanner's array or the shared zero array
-    Force[] desiredForces = ff.linearForces().clone();
+    Force[] desiredForces = ff.linearForces();
 
     // Compensate for skew when translating and rotating simultaneously
     speeds = ChassisSpeeds.discretize(speeds, DriveConstants.kPeriodicTimeSeconds);
@@ -344,34 +344,8 @@ public class DriveSubsystem extends SubsystemBase {
     // Desaturate the wheel speeds to ensure they are within the maximum allowed speed
     SwerveDriveKinematics.desaturateWheelSpeeds(desiredStates, DriveConstants.kMaxSpeedMetersPerSecond);
 
-    // Set each swerve module state directly from the next calculated setpoint
-    for (int i = 0; i < 4; i++) {
-      Rotation2d currentAngle = modules[i].getState().angle;
-      SwerveModuleState s = desiredStates[i];
-
-      // Determine if the voltage sign should be flipped based on the angle difference. 
-      // If the angle difference is greater than 90 degrees, flip the voltage sign.
-      // Must be done before calling optimize() since optimize() may change the 
-      // angle to be more than 90 degrees away from the current angle.
-      boolean flipped = Math.abs(s.angle.minus(currentAngle).getDegrees()) > 90.0;
-
-      // Optimize the desired state to minimize rotation and avoid unnecessary wheel spinning
-      s.optimize(currentAngle);
-
-      // Scale the speed by the cosine of the angle difference to reduce  
-      // speed when the wheel is not aligned with the desired direction
-      s.cosineScale(currentAngle);
-
-      // Feedforward follows the same desaturation, flip, and cosine scaling as the speed
-      double scale = desatScale * (flipped ? -1.0 : 1.0) * s.angle.minus(currentAngle).getCos();
-
-      // Apply the scale to the desired forces for this module
-      desiredForces[i] = desiredForces[i].times(scale);
-
-      // Set the desired state and feedforward for the current module, 
-      // applying the calculated scale to the feedforward force
-      modules[i].setDesiredState(s, desiredForces[i]);
-    }
+    // Set each swerve module state
+    setModuleStates(desiredStates, desiredForces, desatScale);
   }
   
   /**
@@ -403,15 +377,47 @@ public class DriveSubsystem extends SubsystemBase {
       driveSetpoint = new SwerveSetpoint(new ChassisSpeeds(), stopped, kZeroFeedforwards);
     }
 
-    // Get the setpoint's calculated swerve module states for each module
-    SwerveModuleState[] desiredStates = driveSetpoint.moduleStates();
+    // Set each swerve module state
+    setModuleStates(
+      driveSetpoint.moduleStates(), 
+      driveSetpoint.feedforwards().linearForces(), 
+      1.0
+    );
+  }
 
-    // Get the setpoint's feedforward forces for each module
-    Force[] desiredForces = driveSetpoint.feedforwards().linearForces();
-
-    // Set each swerve module state directly from the next calculated setpoint
+  /**
+   * Sends module states to the modules after aligning them with each module's CURRENT angle:
+   * optimizes (shortest rotation, possibly reversing drive direction), then cosine-scales
+   * the speed. The feedforward force gets the same flip and scaling as the speed.
+   * Never mutates the inputs, so it is safe to pass the setpoint generator's stored setpoint.
+   * @param requested Desired module states (FL, FR, BL, BR)
+   * @param forces Feedforward force per module (same order)
+   * @param ffScale Extra scale for the feedforward, e.g. a desaturation factor (1.0 if none)
+   */
+  private void setModuleStates(SwerveModuleState[] requested, Force[] forces, double ffScale) {
     for (int i = 0; i < 4; i++) {
-      modules[i].setDesiredState(desiredStates[i], desiredForces[i]);
+      // Get the current angle of the module to optimize against
+      Rotation2d current = modules[i].getState().angle;
+
+      // Copy so the caller's (or generator's) objects are untouched
+      SwerveModuleState s = new SwerveModuleState(requested[i].speedMetersPerSecond, requested[i].angle);
+
+      // Must be computed BEFORE optimize(), which flips the angle by 180° and negates the speed
+      boolean flipped = Math.abs(s.angle.minus(current).getDegrees()) > 90.0;
+
+      // Optimize the requested state against the current angle to minimize  
+      // rotation and possibly reverse the drive direction
+      s.optimize(current);
+
+      // Cosine scale the speed based on how far the requested angle is from the current angle.
+      s.cosineScale(current);
+
+      // Feedforward follows the same flip and cosine scaling as the speed
+      double scale = ffScale * (flipped ? -1.0 : 1.0) * s.angle.minus(current).getCos();
+
+      // Set the desired state and feedforward for the current module, 
+      // applying the calculated scale to the feedforward force
+      modules[i].setDesiredState(s, forces[i].times(scale));
     }
   }
 
@@ -878,13 +884,10 @@ public class DriveSubsystem extends SubsystemBase {
       double rSpeed = MathUtil.applyDeadband(rawR, DriveConstants.kJoystickDeadband);
       rSpeed = Math.copySign(Math.pow(Math.abs(rSpeed), DriveConstants.kJoystickInputExponent), rSpeed);
 
-      // If not using the setpoint generator, apply slew rate 
-      // limiting to smooth out sudden changes in speed
-      if (!DriveConstants.kUseSetpointGenerator) {
-        xSpeed = xLimiter.calculate(xSpeed);
-        ySpeed = yLimiter.calculate(ySpeed);
-        rSpeed = rLimiter.calculate(rSpeed);
-      }
+      // Apply slew rate limiting to smooth out sudden changes in speed
+      xSpeed = xLimiter.calculate(xSpeed);
+      ySpeed = yLimiter.calculate(ySpeed);
+      rSpeed = rLimiter.calculate(rSpeed);
 
       // If slow mode is enabled, scale down speeds for finer control
       if (isSlowMode()) {
