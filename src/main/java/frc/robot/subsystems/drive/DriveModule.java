@@ -93,7 +93,7 @@ public class DriveModule implements Sendable {
   private DCMotorSim driveWheelSim;        // physics of the drive wheel
   private DCMotorSim steerAssemblySim;        // physics of the steering assembly
 
-  // Counters for encoder drift detection (next to your existing driftLoops field)
+  // Counters for encoder drift detection
   private int driftLoops = 0;
   private int resyncCount = 0;
 
