@@ -64,6 +64,7 @@ public class ElevatorSubsystem extends SubsystemBase {
 
   // Control requests
   private final MotionMagicVoltage motionMagicRequest;
+  private final VoltageOut voltageRequest;
 
   // Target position (for telemetry)
   private double targetHeightMeters = 0.0;
@@ -94,6 +95,9 @@ public class ElevatorSubsystem extends SubsystemBase {
 
     // Initialize control requests
     motionMagicRequest = new MotionMagicVoltage(0).withSlot(0);
+
+    // Initialize voltage request with FOC disabled
+    voltageRequest = new VoltageOut(0).withEnableFOC(false);
 
     // NOTE: Do NOT zero the encoder here. The TalonFX keeps its position across a robot code
     // restart and only resets to 0 on a power cycle. Use setHomePositionCommand() (disabled-only).
@@ -358,7 +362,7 @@ public class ElevatorSubsystem extends SubsystemBase {
     }
 
     // Set the voltage to the leader motor (follower will mirror)
-    leaderMotor.setControl(new VoltageOut(volts));
+    leaderMotor.setControl(voltageRequest.withOutput(volts));
   }
 
   /**

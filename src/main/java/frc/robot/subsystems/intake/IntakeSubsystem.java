@@ -79,7 +79,7 @@ public class IntakeSubsystem extends SubsystemBase {
     );
 
     // Initialize control request
-    rollerVelocityRequest = new VelocityVoltage(0).withSlot(0);
+    rollerVelocityRequest = new VelocityVoltage(0).withSlot(0).withEnableFOC(false);
 
     // Initialize SysId routine (leader motor only)
     rollerSysIdRoutine = new SysIdRoutine(

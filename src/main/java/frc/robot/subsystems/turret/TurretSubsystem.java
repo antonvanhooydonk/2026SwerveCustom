@@ -71,6 +71,7 @@ public class TurretSubsystem extends SubsystemBase {
 
   // Turret control request
   private final MotionMagicVoltage motionMagicRequest;
+  private final VoltageOut voltageRequest;
 
   // Cached target (for telemetry)
   private double targetAngleDegrees = 0.0;
@@ -95,6 +96,9 @@ public class TurretSubsystem extends SubsystemBase {
 
     // Initialize control request
     motionMagicRequest = new MotionMagicVoltage(0).withSlot(0);
+
+    // Initialize voltage request with FOC disabled
+    voltageRequest = new VoltageOut(0).withEnableFOC(false);
 
     // NOTE: Do NOT zero the encoder here. The TalonFX keeps its position across a robot code
     // restart (crash, brownout of the roboRIO, redeploy) and only resets to 0 on a power cycle.
@@ -357,7 +361,7 @@ public class TurretSubsystem extends SubsystemBase {
     }
 
     // Set the voltage to the turret motor
-    turretMotor.setControl(new VoltageOut(volts));
+    turretMotor.setControl(voltageRequest.withOutput(volts));
   }
 
   /**

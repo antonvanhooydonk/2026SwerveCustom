@@ -138,8 +138,7 @@ public class DriveSubsystem extends SubsystemBase {
         DriveConstants.kFrontLeftDriveInverted,
         DriveConstants.kFrontLeftSteerInverted,
         AnalogConstants.kFrontLeftAbsEncoderID,
-        DriveConstants.kFrontLeftAbsEncoderOffsetRadians,
-        DriveConstants.kFrontLeftAbsEncoderInverted
+        DriveConstants.kFrontLeftAbsEncoderOffsetRadians
       ),
       new DriveModule(
         "FR",
@@ -148,8 +147,7 @@ public class DriveSubsystem extends SubsystemBase {
         DriveConstants.kFrontRightDriveInverted,
         DriveConstants.kFrontRightSteerInverted,
         AnalogConstants.kFrontRightAbsEncoderID,    
-        DriveConstants.kFrontRightAbsEncoderOffsetRadians,
-        DriveConstants.kFrontRightAbsEncoderInverted
+        DriveConstants.kFrontRightAbsEncoderOffsetRadians
       ),
       new DriveModule(
         "BL",
@@ -158,8 +156,7 @@ public class DriveSubsystem extends SubsystemBase {
         DriveConstants.kBackLeftDriveInverted,
         DriveConstants.kBackLeftSteerInverted,
         AnalogConstants.kBackLeftAbsEncoderID,
-        DriveConstants.kBackLeftAbsEncoderOffsetRadians,
-        DriveConstants.kBackLeftAbsEncoderInverted
+        DriveConstants.kBackLeftAbsEncoderOffsetRadians
       ),
       new DriveModule(
         "BR",
@@ -168,8 +165,7 @@ public class DriveSubsystem extends SubsystemBase {
         DriveConstants.kBackRightDriveInverted,
         DriveConstants.kBackRightSteerInverted,
         AnalogConstants.kBackRightAbsEncoderID,
-        DriveConstants.kBackRightAbsEncoderOffsetRadians,
-        DriveConstants.kBackRightAbsEncoderInverted
+        DriveConstants.kBackRightAbsEncoderOffsetRadians
       )
     };
     for (var module : modules) {
@@ -852,77 +848,85 @@ public class DriveSubsystem extends SubsystemBase {
     DoubleSupplier rSpeedSupplier
   ) {
     // Return a command that runs the drive logic
-    return run(() -> {
-      // Get raw joystick inputs from the suppliers every cycle
-      double rawX = xSpeedSupplier.getAsDouble();
-      double rawY = ySpeedSupplier.getAsDouble();
-      double rawR = rSpeedSupplier.getAsDouble();
+    return startRun(
+      () -> {
+        // Reset slew rate limiters when the command starts to avoid sudden jumps in speed
+        xLimiter.reset(0.0);
+        yLimiter.reset(0.0);
+        rLimiter.reset(0.0);
+      },
+      () -> {
+        // Get raw joystick inputs from the suppliers every cycle
+        double rawX = xSpeedSupplier.getAsDouble();
+        double rawY = ySpeedSupplier.getAsDouble();
+        double rawR = rSpeedSupplier.getAsDouble();
 
-      // Clamp the raw inputs to -1..1 to avoid any unexpected values
-      rawX = MathUtil.clamp(rawX, -1.0, 1.0);
-      rawY = MathUtil.clamp(rawY, -1.0, 1.0);
-      rawR = MathUtil.clamp(rawR, -1.0, 1.0);
-      
-      double magnitude = Math.hypot(rawX, rawY);
-      double xSpeed = 0;
-      double ySpeed = 0;
-
-      // Apply circular deadband for translation 
-      if (magnitude > DriveConstants.kJoystickDeadband) {
-        // Rescale so speed starts at 0 at the edge of the deadband
-        double clippedMagnitude = MathUtil.clamp((magnitude - DriveConstants.kJoystickDeadband) / (1.0 - DriveConstants.kJoystickDeadband), 0.0, 1.0);
+        // Clamp the raw inputs to -1..1 to avoid any unexpected values
+        rawX = MathUtil.clamp(rawX, -1.0, 1.0);
+        rawY = MathUtil.clamp(rawY, -1.0, 1.0);
+        rawR = MathUtil.clamp(rawR, -1.0, 1.0);
         
-        // Apply squaring/cubing to the clipped magnitude
-        double curvedMagnitude = Math.pow(clippedMagnitude, DriveConstants.kJoystickInputExponent);
+        double magnitude = Math.hypot(rawX, rawY);
+        double xSpeed = 0;
+        double ySpeed = 0;
 
-        // Re-apply the direction sign to the new magnitude
-        xSpeed = (rawX / magnitude) * curvedMagnitude;
-        ySpeed = (rawY / magnitude) * curvedMagnitude;
+        // Apply circular deadband for translation 
+        if (magnitude > DriveConstants.kJoystickDeadband) {
+          // Rescale so speed starts at 0 at the edge of the deadband
+          double clippedMagnitude = MathUtil.clamp((magnitude - DriveConstants.kJoystickDeadband) / (1.0 - DriveConstants.kJoystickDeadband), 0.0, 1.0);
+          
+          // Apply squaring/cubing to the clipped magnitude
+          double curvedMagnitude = Math.pow(clippedMagnitude, DriveConstants.kJoystickInputExponent);
+
+          // Re-apply the direction sign to the new magnitude
+          xSpeed = (rawX / magnitude) * curvedMagnitude;
+          ySpeed = (rawY / magnitude) * curvedMagnitude;
+        }
+
+        // Apply 1D deadband and squaring for rotation
+        double rSpeed = MathUtil.applyDeadband(rawR, DriveConstants.kJoystickDeadband);
+        rSpeed = Math.copySign(Math.pow(Math.abs(rSpeed), DriveConstants.kJoystickInputExponent), rSpeed);
+
+        // Apply slew rate limiting to smooth out sudden changes in speed
+        xSpeed = xLimiter.calculate(xSpeed);
+        ySpeed = yLimiter.calculate(ySpeed);
+        rSpeed = rLimiter.calculate(rSpeed);
+
+        // If slow mode is enabled, scale down speeds for finer control
+        if (isSlowMode()) {
+          xSpeed *= DriveConstants.kSlowModeScaling;
+          ySpeed *= DriveConstants.kSlowModeScaling;
+          rSpeed *= DriveConstants.kSlowModeScaling;
+        }
+
+        // Convert the joystick's -1..1 to m/s and rad/s
+        double xSpeedMPS = xSpeed * DriveConstants.kMaxSpeedMetersPerSecond;
+        double ySpeedMPS = ySpeed * DriveConstants.kMaxSpeedMetersPerSecond;
+        double rSpeedRad = rSpeed * DriveConstants.kMaxAngularSpeedRadsPerSecond;
+
+        // Create robot-relative chassis speeds
+        ChassisSpeeds chassisSpeeds;
+        if (isFieldRelative()) {
+          // Invert translation inputs for red alliance so that pushing the joystick
+          // forward always moves the robot away from the driver station
+          int invert = Utils.isRedAlliance() ? -1 : 1;
+
+          // Convert field-relative speeds to robot-relative speeds
+          chassisSpeeds = ChassisSpeeds.fromFieldRelativeSpeeds(
+            xSpeedMPS * invert, 
+            ySpeedMPS * invert, 
+            rSpeedRad, 
+            getHeading()
+          );
+        } else {
+          // Use robot-relative speeds directly
+          chassisSpeeds = new ChassisSpeeds(xSpeedMPS, ySpeedMPS, rSpeedRad);
+        }
+
+        // Drive the robot with robot-relative speeds
+        driveRobotRelative(chassisSpeeds, null);
       }
-
-      // Apply 1D deadband and squaring for rotation
-      double rSpeed = MathUtil.applyDeadband(rawR, DriveConstants.kJoystickDeadband);
-      rSpeed = Math.copySign(Math.pow(Math.abs(rSpeed), DriveConstants.kJoystickInputExponent), rSpeed);
-
-      // Apply slew rate limiting to smooth out sudden changes in speed
-      xSpeed = xLimiter.calculate(xSpeed);
-      ySpeed = yLimiter.calculate(ySpeed);
-      rSpeed = rLimiter.calculate(rSpeed);
-
-      // If slow mode is enabled, scale down speeds for finer control
-      if (isSlowMode()) {
-        xSpeed *= DriveConstants.kSlowModeScaling;
-        ySpeed *= DriveConstants.kSlowModeScaling;
-        rSpeed *= DriveConstants.kSlowModeScaling;
-      }
-
-      // Convert the joystick's -1..1 to m/s and rad/s
-      double xSpeedMPS = xSpeed * DriveConstants.kMaxSpeedMetersPerSecond;
-      double ySpeedMPS = ySpeed * DriveConstants.kMaxSpeedMetersPerSecond;
-      double rSpeedRad = rSpeed * DriveConstants.kMaxAngularSpeedRadsPerSecond;
-
-      // Create robot-relative chassis speeds
-      ChassisSpeeds chassisSpeeds;
-      if (isFieldRelative()) {
-        // Invert translation inputs for red alliance so that pushing the joystick
-        // forward always moves the robot away from the driver station
-        int invert = Utils.isRedAlliance() ? -1 : 1;
-
-        // Convert field-relative speeds to robot-relative speeds
-        chassisSpeeds = ChassisSpeeds.fromFieldRelativeSpeeds(
-          xSpeedMPS * invert, 
-          ySpeedMPS * invert, 
-          rSpeedRad, 
-          getHeading()
-        );
-      } else {
-        // Use robot-relative speeds directly
-        chassisSpeeds = new ChassisSpeeds(xSpeedMPS, ySpeedMPS, rSpeedRad);
-      }
-
-      // Drive the robot with robot-relative speeds
-      driveRobotRelative(chassisSpeeds, null);
-    })
+    )
     .withName("Drive_DriveManual");
   }
 

@@ -39,7 +39,7 @@ public final class DriveConstants {
   // ------------------------------------------------------------
   // Driver joystick settings
   // ------------------------------------------------------------
-  public static final double kTranslationSlewRateLimit = 3.0; // limit for translational acceleration
+  public static final double kTranslationSlewRateLimit = kMaxAccelMetersPerSecondSq / kMaxSpeedMetersPerSecond; // limit for translational acceleration, increase kMaxAccelMetersPerSecondSq if sluggish
   public static final double kRotationSlewRateLimit = 4.0; // limit for rotational acceleration
   public static final double kJoystickInputExponent = 2.0; // 2 to square, 3 to cube
   public static final double kJoystickDeadband  = 0.1; // typically 0.05 to 0.15
@@ -120,22 +120,18 @@ public final class DriveConstants {
   // ------------------------------------------------------------
   public static final boolean kFrontLeftDriveInverted = false;
   public static final boolean kFrontLeftSteerInverted = false;
-  public static final boolean kFrontLeftAbsEncoderInverted = false;
   public static final double kFrontLeftAbsEncoderOffsetRadians = Units.degreesToRadians(18.8);
 
   public static final boolean kFrontRightDriveInverted = false;
   public static final boolean kFrontRightSteerInverted = false;
-  public static final boolean kFrontRightAbsEncoderInverted = false;
   public static final double kFrontRightAbsEncoderOffsetRadians = Units.degreesToRadians(117.0);
   
   public static final boolean kBackLeftDriveInverted = false;
   public static final boolean kBackLeftSteerInverted = false;
-  public static final boolean kBackLeftAbsEncoderInverted = false;
   public static final double kBackLeftAbsEncoderOffsetRadians = Units.degreesToRadians(158.4);
 
   public static final boolean kBackRightDriveInverted = false;
   public static final boolean kBackRightSteerInverted = false;
-  public static final boolean kBackRightAbsEncoderInverted = false;
   public static final double kBackRightAbsEncoderOffsetRadians = Units.degreesToRadians(294.0);
 
   // ------------------------------------------------------------

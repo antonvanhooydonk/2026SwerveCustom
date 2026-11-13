@@ -86,7 +86,7 @@ public class FlywheelSubsystem extends SubsystemBase {
     flywheelFollower = motors.follower();
 
     // Initialize control request
-    flywheelVelocityRequest = new VelocityVoltage(0).withSlot(0);
+    flywheelVelocityRequest = new VelocityVoltage(0).withSlot(0).withEnableFOC(false);
 
     // Initialize SysId routine (leader motor only)
     flywheelSysIdRoutine = new SysIdRoutine(

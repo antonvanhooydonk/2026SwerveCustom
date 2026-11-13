@@ -68,6 +68,7 @@ public class DriveModule implements Sendable {
   private final SparkClosedLoopController steerPIDController;
   private final RelativeEncoder steerEncoder;
   private final VelocityVoltage driveVelocityRequest;
+  private final VoltageOut driveVoltageRequest;
 
   // Module configuration
   private final int driveMotorID;
@@ -76,7 +77,6 @@ public class DriveModule implements Sendable {
   private final boolean steerMotorInverted;
   private final int absoluteEncoderID;
   private final double absoluteEncoderOffsetRadians;
-  private final boolean absoluteEncoderInverted;
   private final String moduleName;
 
   // Cached state & position for optimization
@@ -120,8 +120,7 @@ public class DriveModule implements Sendable {
     boolean driveMotorInverted,
     boolean steerMotorInverted,
     int absoluteEncoderID,
-    double absoluteEncoderOffsetRadians,
-    boolean absoluteEncoderInverted
+    double absoluteEncoderOffsetRadians
   ) {
     // Cache module info
     this.moduleName = moduleName;
@@ -131,7 +130,6 @@ public class DriveModule implements Sendable {
     this.steerMotorInverted = steerMotorInverted;
     this.absoluteEncoderID = absoluteEncoderID;
     this.absoluteEncoderOffsetRadians = absoluteEncoderOffsetRadians;
-    this.absoluteEncoderInverted = absoluteEncoderInverted;
 
     // Initialize the drive motor
     driveMotor = TalonFXFactory.createMotor(this.driveMotorID, getDriveMotorConfig());
@@ -143,12 +141,17 @@ public class DriveModule implements Sendable {
     absoluteEncoder = new AbsoluteEncoder(
       this.absoluteEncoderID, 
       this.absoluteEncoderOffsetRadians, 
-      this.absoluteEncoderInverted,
+      this.steerMotorInverted, // absolute encoder is inverted if the steer motor is inverted
       this.moduleName
     );
 
     // Initialize the drive velocity request
-    driveVelocityRequest = new VelocityVoltage(0).withSlot(0);
+    driveVelocityRequest = new VelocityVoltage(0)
+      .withSlot(0)
+      .withEnableFOC(false);
+
+    // Initialize the drive voltage request
+    driveVoltageRequest = new VoltageOut(0).withEnableFOC(false);
 
     // Initialize drive motor status signals
     drivePosition = driveMotor.getPosition();
@@ -391,7 +394,7 @@ public class DriveModule implements Sendable {
     double absErr = Math.abs(errorRad);
     boolean gross = absErr > Units.degreesToRadians(45.0);
     boolean fine  = stationary && absErr > Units.degreesToRadians(10.0);
-    
+
     if (voltsOk && (gross || fine)) {
       if (++driftLoops >= (gross ? 10 : 25)) { resetSteerEncoder(); driftLoops = 0; }
     } else {
@@ -596,7 +599,7 @@ public class DriveModule implements Sendable {
    * @param volts Desired voltage in volts
    */
   public void setDriveVoltage(double volts) {
-    driveMotor.setControl(new VoltageOut(volts));
+    driveMotor.setControl(driveVoltageRequest.withOutput(volts));
   }
 
   /**

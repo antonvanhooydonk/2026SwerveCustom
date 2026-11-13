@@ -66,7 +66,7 @@ public class FeederSubsystem extends SubsystemBase {
     feederMotor = TalonFXFactory.createMotor(CANConstants.kFeederMotorID, getMotorConfig());
 
     // Initialize control request
-    feederVelocityRequest = new VelocityVoltage(0).withSlot(0);
+    feederVelocityRequest = new VelocityVoltage(0).withSlot(0).withEnableFOC(false);
 
     // Initialize SysId routine (leader motor only)
     feederSysIdRoutine = new SysIdRoutine(
