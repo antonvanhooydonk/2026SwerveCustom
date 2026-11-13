@@ -387,17 +387,13 @@ public class DriveModule implements Sendable {
     double volts = absoluteEncoder.getRawVoltage();
     boolean stationary = Math.abs(cachedState.speedMetersPerSecond) < 0.05 && Math.abs(getSteerVelocityRadPerSec()) < 0.5;
     double errorRad = Utils.normalizeAngleRadians(absoluteEncoder.getAngleRadians() - getSteerAngleRadians());
-
-    if (
-      stationary && 
-      volts > 0.15 && 
-      volts < 4.85 && 
-      Math.abs(errorRad) > Units.degreesToRadians(10)
-    ) {
-      if (++driftLoops >= 25) { 
-        resetSteerEncoder();
-        driftLoops = 0;
-      }
+    boolean voltsOk = volts > 0.15 && volts < 4.85;
+    double absErr = Math.abs(errorRad);
+    boolean gross = absErr > Units.degreesToRadians(45.0);
+    boolean fine  = stationary && absErr > Units.degreesToRadians(10.0);
+    
+    if (voltsOk && (gross || fine)) {
+      if (++driftLoops >= (gross ? 10 : 25)) { resetSteerEncoder(); driftLoops = 0; }
     } else {
       driftLoops = 0;
     }
