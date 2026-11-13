@@ -77,6 +77,7 @@ public class DriveModule implements Sendable {
   private final boolean steerMotorInverted;
   private final int absoluteEncoderID;
   private final double absoluteEncoderOffsetRadians;
+  private final boolean absoluteEncoderInverted;
   private final String moduleName;
 
   // Cached state & position for optimization
@@ -92,8 +93,9 @@ public class DriveModule implements Sendable {
   private DCMotorSim driveWheelSim;        // physics of the drive wheel
   private DCMotorSim steerAssemblySim;        // physics of the steering assembly
 
-  // Counter for encoder drift detection
+  // Counters for encoder drift detection (next to your existing driftLoops field)
   private int driftLoops = 0;
+  private int resyncCount = 0;
 
   // Status signals for drive motor telemetry
   private final StatusSignal<Angle> drivePosition;
@@ -120,7 +122,8 @@ public class DriveModule implements Sendable {
     boolean driveMotorInverted,
     boolean steerMotorInverted,
     int absoluteEncoderID,
-    double absoluteEncoderOffsetRadians
+    double absoluteEncoderOffsetRadians,
+    boolean absoluteEncoderInverted
   ) {
     // Cache module info
     this.moduleName = moduleName;
@@ -130,6 +133,7 @@ public class DriveModule implements Sendable {
     this.steerMotorInverted = steerMotorInverted;
     this.absoluteEncoderID = absoluteEncoderID;
     this.absoluteEncoderOffsetRadians = absoluteEncoderOffsetRadians;
+    this.absoluteEncoderInverted = absoluteEncoderInverted;
 
     // Initialize the drive motor
     driveMotor = TalonFXFactory.createMotor(this.driveMotorID, getDriveMotorConfig());
@@ -141,7 +145,7 @@ public class DriveModule implements Sendable {
     absoluteEncoder = new AbsoluteEncoder(
       this.absoluteEncoderID, 
       this.absoluteEncoderOffsetRadians, 
-      this.steerMotorInverted, // absolute encoder is inverted if the steer motor is inverted
+      this.absoluteEncoderInverted,
       this.moduleName
     );
 
@@ -382,22 +386,29 @@ public class DriveModule implements Sendable {
   }
 
   /**
-   * Checks for encoder drift and resets the steer encoder if necessary.
-   * This is a safety feature to prevent the steer encoder from 
-   * drifting too far from the absolute encoder.
+   * Resets the steer encoder to the absolute encoder if they disagree for 0.2 s.
+   * Small errors are only trusted when the module is stationary. Large errors are 
+   * fixed even while driving, since a wheel that far off is worse than a brief correction.
    */
   private void checkEncoderDrift() {
+    // The absolute encoder is only trusted away from the rails (disconnected, or at the 0/5 V wrap)
     double volts = absoluteEncoder.getRawVoltage();
-    boolean stationary = Math.abs(cachedState.speedMetersPerSecond) < 0.05 && Math.abs(getSteerVelocityRadPerSec()) < 0.5;
-    double errorRad = Utils.normalizeAngleRadians(absoluteEncoder.getAngleRadians() - getSteerAngleRadians());
     boolean voltsOk = volts > 0.15 && volts < 4.85;
-    double absErr = Math.abs(errorRad);
-    boolean gross = absErr > Units.degreesToRadians(45.0);
-    boolean fine  = stationary && absErr > Units.degreesToRadians(10.0);
+    double errorRad = Math.abs(Utils.normalizeAngleRadians(
+      absoluteEncoder.getAngleRadians() - getSteerAngleRadians()
+    ));
+    boolean stationary = Math.abs(cachedState.speedMetersPerSecond) < 0.05 
+      && Math.abs(getSteerVelocityRadPerSec()) < 0.5;
 
-    if (voltsOk && (gross || fine)) {
-      if (++driftLoops >= (gross ? 10 : 25)) { resetSteerEncoder(); driftLoops = 0; }
-    } else {
+    boolean gross = errorRad > DriveConstants.kDriftGrossRad;
+    boolean fine = stationary && errorRad > DriveConstants.kDriftFineRad;
+
+    // Count consecutive bad loops, reset on any good one
+    driftLoops = (voltsOk && (gross || fine)) ? driftLoops + 1 : 0;
+
+    if (driftLoops >= DriveConstants.kDriftDebounceLoops) {
+      resetSteerEncoder();
+      resyncCount++;
       driftLoops = 0;
     }
   }
@@ -657,5 +668,6 @@ public class DriveModule implements Sendable {
     builder.addDoubleProperty("Steer Voltage (V)", () -> Utils.showDouble(getSteerVoltage()), null);
     builder.addDoubleProperty("Steer Current (A)", () -> Utils.showDouble(steerMotor.getOutputCurrent()), null);
     builder.addDoubleProperty("Steer Temp (deg C)", () -> Utils.showDouble(steerMotor.getMotorTemperature()), null);
+    builder.addIntegerProperty("Steer Resync Count", () -> resyncCount, null);
   }
 }

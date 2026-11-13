@@ -138,7 +138,8 @@ public class DriveSubsystem extends SubsystemBase {
         DriveConstants.kFrontLeftDriveInverted,
         DriveConstants.kFrontLeftSteerInverted,
         AnalogConstants.kFrontLeftAbsEncoderID,
-        DriveConstants.kFrontLeftAbsEncoderOffsetRadians
+        DriveConstants.kFrontLeftAbsEncoderOffsetRadians,
+        DriveConstants.kFrontLeftAbsEncoderInverted
       ),
       new DriveModule(
         "FR",
@@ -147,7 +148,8 @@ public class DriveSubsystem extends SubsystemBase {
         DriveConstants.kFrontRightDriveInverted,
         DriveConstants.kFrontRightSteerInverted,
         AnalogConstants.kFrontRightAbsEncoderID,    
-        DriveConstants.kFrontRightAbsEncoderOffsetRadians
+        DriveConstants.kFrontRightAbsEncoderOffsetRadians,
+        DriveConstants.kFrontRightAbsEncoderInverted
       ),
       new DriveModule(
         "BL",
@@ -156,7 +158,8 @@ public class DriveSubsystem extends SubsystemBase {
         DriveConstants.kBackLeftDriveInverted,
         DriveConstants.kBackLeftSteerInverted,
         AnalogConstants.kBackLeftAbsEncoderID,
-        DriveConstants.kBackLeftAbsEncoderOffsetRadians
+        DriveConstants.kBackLeftAbsEncoderOffsetRadians,
+        DriveConstants.kBackLeftAbsEncoderInverted
       ),
       new DriveModule(
         "BR",
@@ -165,7 +168,8 @@ public class DriveSubsystem extends SubsystemBase {
         DriveConstants.kBackRightDriveInverted,
         DriveConstants.kBackRightSteerInverted,
         AnalogConstants.kBackRightAbsEncoderID,
-        DriveConstants.kBackRightAbsEncoderOffsetRadians
+        DriveConstants.kBackRightAbsEncoderOffsetRadians,
+        DriveConstants.kBackRightAbsEncoderInverted
       )
     };
     for (var module : modules) {

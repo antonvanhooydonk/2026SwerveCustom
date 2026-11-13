@@ -77,6 +77,11 @@ public final class DriveConstants {
   public static final double kVisionMaxAngularVelocityRadPerSec = 2.0;   // ~115 deg/s
   public static final double kVisionMaxLinearVelocityMetersPerSec = 4.0; // set very high to effectively disable
 
+  // Drift detection constants
+  public static final double kDriftFineRad = Units.degreesToRadians(10.0);  // small drift: only trusted when stationary
+  public static final double kDriftGrossRad = Units.degreesToRadians(45.0); // above any timing skew: fixed even while driving
+  public static final int kDriftDebounceLoops = 10;                         // 0.2 s at 20 ms loops
+
   // ============================================================
   // BELOW THIS LINE SHOULDN'T BE CHANGED AT COMPETITION
   // ============================================================
@@ -119,19 +124,23 @@ public final class DriveConstants {
   // Swerve module constants
   // ------------------------------------------------------------
   public static final boolean kFrontLeftDriveInverted = false;
-  public static final boolean kFrontLeftSteerInverted = false;
+  public static final boolean kFrontLeftSteerInverted = true;
+  public static final boolean kFrontLeftAbsEncoderInverted = false;
   public static final double kFrontLeftAbsEncoderOffsetRadians = Units.degreesToRadians(18.8);
 
   public static final boolean kFrontRightDriveInverted = false;
-  public static final boolean kFrontRightSteerInverted = false;
+  public static final boolean kFrontRightSteerInverted = true;
+  public static final boolean kFrontRightAbsEncoderInverted = false;
   public static final double kFrontRightAbsEncoderOffsetRadians = Units.degreesToRadians(117.0);
   
   public static final boolean kBackLeftDriveInverted = false;
-  public static final boolean kBackLeftSteerInverted = false;
+  public static final boolean kBackLeftSteerInverted = true;
+  public static final boolean kBackLeftAbsEncoderInverted = false;
   public static final double kBackLeftAbsEncoderOffsetRadians = Units.degreesToRadians(158.4);
 
   public static final boolean kBackRightDriveInverted = false;
-  public static final boolean kBackRightSteerInverted = false;
+  public static final boolean kBackRightSteerInverted = true;
+  public static final boolean kBackRightAbsEncoderInverted = false;
   public static final double kBackRightAbsEncoderOffsetRadians = Units.degreesToRadians(294.0);
 
   // ------------------------------------------------------------
