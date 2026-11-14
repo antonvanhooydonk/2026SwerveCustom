@@ -279,15 +279,15 @@ public class ElevatorSubsystem extends SubsystemBase {
       .withSupplyVoltageTimeConstant(0.02);
 
     // Set PID and feedforward gains
-      config.Slot0
-        .withKP(ElevatorConstants.kP)
-        .withKI(ElevatorConstants.kI)
-        .withKD(ElevatorConstants.kD)
-        .withKS(ElevatorConstants.kS)
-        .withKV(ElevatorConstants.kV)
-        .withKA(ElevatorConstants.kA)
-        .withKG(ElevatorConstants.kG)
-        .withGravityType(GravityTypeValue.Elevator_Static);
+    config.Slot0
+      .withKP(ElevatorConstants.kP)
+      .withKI(ElevatorConstants.kI)
+      .withKD(ElevatorConstants.kD)
+      .withKS(ElevatorConstants.kS)
+      .withKV(ElevatorConstants.kV)
+      .withKA(ElevatorConstants.kA)
+      .withKG(ElevatorConstants.kG)
+      .withGravityType(GravityTypeValue.Elevator_Static);
 
     // Set motion control parameters
     config.MotionMagic
