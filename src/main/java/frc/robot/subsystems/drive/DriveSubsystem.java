@@ -395,6 +395,7 @@ public class DriveSubsystem extends SubsystemBase {
    * @param ffScale Extra scale for the feedforward, e.g. a desaturation factor (1.0 if none)
    */
   private void setModuleStates(SwerveModuleState[] requested, Force[] forces, double ffScale) {
+    // Set each module's desired state
     for (int i = 0; i < 4; i++) {
       // Get the current angle of the module to optimize against
       Rotation2d current = modules[i].getState().angle;
