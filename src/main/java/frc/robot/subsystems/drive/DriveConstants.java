@@ -34,7 +34,7 @@ public final class DriveConstants {
   public static final double kMaxAngularSpeedRadsPerSecond = Units.rotationsToRadians(1.6); // max rotational speed. Physical ceiling = kMaxSpeedMetersPerSecond / 0.413 m (module radius) = ~1.64 rot/s, so keep <= that
   public static final double kSlowModeScaling = 0.25; // scaling factor for "slow mode", typically 0.25 to 0.5, adjust as needed for driver control at low speeds
 
-  public static final boolean kUseSetpointGenerator = true;
+  public static final boolean kUseSetpointGenerator = false;
 
   // ------------------------------------------------------------
   // Driver joystick settings

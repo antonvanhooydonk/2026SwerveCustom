@@ -468,7 +468,7 @@ public class DriveSubsystem extends SubsystemBase {
     if (brake == this.brakeMode) return;
     this.brakeMode = brake;
     for (var module : modules) {
-      module.setMotorBrake(brakeMode);
+      module.setMotorBrake(this.brakeMode);
     }
   }
 
