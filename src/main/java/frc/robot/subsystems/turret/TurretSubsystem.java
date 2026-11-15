@@ -293,7 +293,7 @@ public class TurretSubsystem extends SubsystemBase {
       .withMotionMagicAcceleration(TurretConstants.kAcceleration)
       .withMotionMagicJerk(TurretConstants.kJerk);
 
-    // Set soft limits for the elevator
+    // Set soft limits for the turret's mechanical range of motion
     config.SoftwareLimitSwitch
       .withForwardSoftLimitEnable(true)
       .withForwardSoftLimitThreshold(Conversions.degreesToRotations(
