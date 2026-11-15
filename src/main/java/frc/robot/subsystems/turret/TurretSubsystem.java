@@ -95,7 +95,7 @@ public class TurretSubsystem extends SubsystemBase {
     turretMotor = TalonFXFactory.createMotor(CANConstants.kTurretMotorID, getMotorConfig());
 
     // Initialize control request
-    motionMagicRequest = new MotionMagicVoltage(0).withSlot(0);
+    motionMagicRequest = new MotionMagicVoltage(0).withSlot(0).withEnableFOC(false);
 
     // Initialize voltage request with FOC disabled
     voltageRequest = new VoltageOut(0).withEnableFOC(false);

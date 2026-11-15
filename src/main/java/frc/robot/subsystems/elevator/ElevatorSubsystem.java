@@ -94,7 +94,7 @@ public class ElevatorSubsystem extends SubsystemBase {
     followerMotor = motors.follower();
 
     // Initialize control requests
-    motionMagicRequest = new MotionMagicVoltage(0).withSlot(0);
+    motionMagicRequest = new MotionMagicVoltage(0).withSlot(0).withEnableFOC(false);
 
     // Initialize voltage request with FOC disabled
     voltageRequest = new VoltageOut(0).withEnableFOC(false);
