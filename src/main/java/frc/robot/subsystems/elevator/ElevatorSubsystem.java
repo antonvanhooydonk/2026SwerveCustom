@@ -39,8 +39,8 @@ import frc.robot.Constants.TuningConstants;
 import frc.robot.shared.Conversions;
 import frc.robot.shared.RobotVisualizer;
 import frc.robot.shared.TalonFXFactory;
-import frc.robot.shared.Utils;
 import frc.robot.shared.TalonFXFactory.MotorPair;
+import frc.robot.shared.Utils;
 
 /**
  * Elevator subsystem using dual Kraken X60 (TalonFX) motors with a follower configuration.
