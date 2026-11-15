@@ -46,22 +46,22 @@ public final class Conversions {
   }
 
   /**
-   * Converts motor rotations per minute (RPM) to rotations per second (RPS),
-   * accounting for gear ratio
-   * @param rpm Rotations per minute (RPM) at the motor shaft
-   * @param gearRatio The gear ratio (motor rotations per output rotation)
-   * @return Rotations per second (RPS) at the output shaft
+   * Converts a mechanism speed in RPM to the motor speed in RPS 
+   * (what TalonFX requests expect), accounting for gear ratio
+   * @param rpm Mechanism (output shaft) rotations per minute
+   * @param gearRatio Motor rotations per mechanism rotation
+   * @return Motor rotations per second
    */
   public static double rpmToRps(double rpm, double gearRatio) {
     return (rpm / 60.0) * gearRatio;
   }
 
   /**
-   * Converts rotations per second (RPS) to rotations per minute (RPM),
-   * accounting for gear ratio
-   * @param rps Rotations per second (RPS) at the output shaft
-   * @param gearRatio The gear ratio (motor rotations per output rotation)
-   * @return Rotations per minute (RPM) at the motor shaft
+   * Converts a motor speed in RPS (what TalonFX reports) to
+   * a mechanism speed in RPM, accounting for gear ratio
+   * @param rps Motor rotations per second
+   * @param gearRatio Motor rotations per mechanism rotation
+   * @return Mechanism (output shaft) rotations per minute
    */
   public static double rpsToRpm(double rps, double gearRatio) {
     return (rps * 60.0) / gearRatio;
