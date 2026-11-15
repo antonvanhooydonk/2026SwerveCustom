@@ -391,21 +391,31 @@ public class DriveModule implements Sendable {
    * fixed even while driving, since a wheel that far off is worse than a brief correction.
    */
   private void checkEncoderDrift() {
-    // The absolute encoder is only trusted away from the rails (disconnected, or at the 0/5 V wrap)
+    // Get the absolute encoder voltage (for diagnostics)
     double volts = absoluteEncoder.getRawVoltage();
+
+    // Check if the absolute encoder voltage is within a valid range
     boolean voltsOk = volts > 0.15 && volts < 4.85;
+
+    // Check the difference between the absolute encoder and the relative encoder
     double errorRad = Math.abs(Utils.normalizeAngleRadians(
       absoluteEncoder.getAngleRadians() - getSteerAngleRadians()
     ));
+
+    // Check if the module is stationary
     boolean stationary = Math.abs(cachedState.speedMetersPerSecond) < 0.05 
       && Math.abs(getSteerVelocityRadPerSec()) < 0.5;
 
+    // Check if the error is large enough to reset the encoder.
     boolean gross = errorRad > DriveConstants.kDriftGrossRad;
+
+    // Fine errors are only reset when stationary
     boolean fine = stationary && errorRad > DriveConstants.kDriftFineRad;
 
     // Count consecutive bad loops, reset on any good one
     driftLoops = (voltsOk && (gross || fine)) ? driftLoops + 1 : 0;
 
+    // If the error has persisted for enough loops, reset the steer encoder to the absolute encoder
     if (driftLoops >= DriveConstants.kDriftDebounceLoops) {
       resetSteerEncoder();
       resyncCount++;
