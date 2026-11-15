@@ -16,8 +16,10 @@ public final class IntakeConstants {
   public static final double kRollerReverseRPM = -2000;  // Power for ejecting (negative)
 
   // Safety limits for the roller RPM to prevent mechanical damage
-  public static final double kRollerMaxRPM =  5500;  // Maximum RPM for the roller
-  public static final double kRollerMinRPM = -5500;  // Minimum RPM for the roller
+  public static final double kRollerMaxRPM          =  5500;  // Maximum RPM for the roller
+  public static final double kRollerMinRPM          = -5500;  // Minimum RPM for the roller
+  public static final double kRollerToleranceRPM    = 100.0;  // RPM window to consider roller at target
+  public static final double kRollerMinSpinningRPM  = 100.0;  // RPM threshold to consider roller spinning
   
   // It is crucial to set these limits correctly to prevent mechanical damage. 
   public static final double kP = 1.0;   // Proportional term

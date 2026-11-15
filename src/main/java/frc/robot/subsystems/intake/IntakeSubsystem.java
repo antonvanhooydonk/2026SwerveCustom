@@ -263,6 +263,26 @@ public class IntakeSubsystem extends SubsystemBase {
   }
 
   /**
+   * Check if flywheel is at the current target RPM within tolerance
+   * @return true if within tolerance of the target RPM  
+   */
+  private boolean isAtTargetRPM() {
+    return Math.abs(targetRPM) > 0.0 && MathUtil.isNear(
+      targetRPM,
+      getRollerRPM(),
+      IntakeConstants.kRollerToleranceRPM
+    );
+  }
+
+  /**
+   * Gets whether the roller is spinning (above a minimum threshold)
+   * @return True if spinning
+   */
+  private boolean isRollerSpinning() {
+    return getRollerRPM() > IntakeConstants.kRollerMinSpinningRPM;
+  }
+
+  /**
    * Returns true if the intake is deployed
    * @return true if the intake is deployed
    */
@@ -273,6 +293,12 @@ public class IntakeSubsystem extends SubsystemBase {
   // ---------------------------------------------------------------------------------------
   // Public triggers that expose private state
   // ---------------------------------------------------------------------------------------
+
+  public final Trigger isRollerAtTargetTrigger = new Trigger(this::isAtTargetRPM)
+    .debounce(0.1, Debouncer.DebounceType.kRising);
+
+  public final Trigger isRollerSpinningTrigger = new Trigger(this::isRollerSpinning)
+    .debounce(0.1, Debouncer.DebounceType.kRising);
 
   public final Trigger isDeployedTrigger = new Trigger(this::isDeployed)
     .debounce(0.1, Debouncer.DebounceType.kRising);
