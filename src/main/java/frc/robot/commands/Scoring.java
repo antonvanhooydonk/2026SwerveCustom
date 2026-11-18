@@ -47,20 +47,20 @@ public class Scoring {
    */
   public Command scoreCommand() {
     return Commands.parallel(
-      Commands.waitUntil(
-        flywheelSubsystem.isFlywheelAtTargetTrigger
-        .and(turretSubsystem.isAtTargetTrigger)
-      ).andThen(feederSubsystem.feedCommand()),
+      flywheelSubsystem.shootAtPoseCommand(
+        () -> turretSubsystem.getPose(driveSubsystem.getPose()), 
+        () -> Utils.isRedAlliance() ? FieldConstants.kRedHubPose : FieldConstants.kBlueHubPose,
+        () -> driveSubsystem.getFieldRelativeSpeeds()
+      ),
       turretSubsystem.aimAtPoseCommand(
         () -> turretSubsystem.getPose(driveSubsystem.getPose()), 
         () -> Utils.isRedAlliance() ? FieldConstants.kRedHubPose : FieldConstants.kBlueHubPose,
         () -> driveSubsystem.getFieldRelativeSpeeds()
       ),
-      flywheelSubsystem.shootAtPoseCommand(
-        () -> turretSubsystem.getPose(driveSubsystem.getPose()), 
-        () -> Utils.isRedAlliance() ? FieldConstants.kRedHubPose : FieldConstants.kBlueHubPose,
-        () -> driveSubsystem.getFieldRelativeSpeeds()
-      )
+      Commands.waitUntil(
+        flywheelSubsystem.isFlywheelAtTargetTrigger
+        .and(turretSubsystem.isAtTargetTrigger)
+      ).andThen(feederSubsystem.feedCommand())
     );
   }
 
@@ -71,20 +71,20 @@ public class Scoring {
    */
   public Command passCommand() {
     return Commands.parallel(
-      Commands.waitUntil(
-        flywheelSubsystem.isFlywheelAtTargetTrigger
-        .and(turretSubsystem.isAtTargetTrigger)
-      ).andThen(feederSubsystem.feedCommand()),
+      flywheelSubsystem.shootAtPoseCommand(
+        () -> turretSubsystem.getPose(driveSubsystem.getPose()), 
+        () -> Utils.isRedAlliance() ? FieldConstants.kRedPassPose : FieldConstants.kBluePassPose,
+        () -> driveSubsystem.getFieldRelativeSpeeds()
+      ),
       turretSubsystem.aimAtPoseCommand(
         () -> turretSubsystem.getPose(driveSubsystem.getPose()), 
         () -> Utils.isRedAlliance() ? FieldConstants.kRedPassPose : FieldConstants.kBluePassPose,
         () -> driveSubsystem.getFieldRelativeSpeeds()
       ),
-      flywheelSubsystem.shootAtPoseCommand(
-        () -> turretSubsystem.getPose(driveSubsystem.getPose()), 
-        () -> Utils.isRedAlliance() ? FieldConstants.kRedPassPose : FieldConstants.kBluePassPose,
-        () -> driveSubsystem.getFieldRelativeSpeeds()
-      )
+      Commands.waitUntil(
+        flywheelSubsystem.isFlywheelAtTargetTrigger
+        .and(turretSubsystem.isAtTargetTrigger)
+      ).andThen(feederSubsystem.feedCommand())
     );
   }
 }
