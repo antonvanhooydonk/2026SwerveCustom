@@ -26,7 +26,7 @@ public final class ElevatorConstants {
   public static final double kHeightL1Meters  = Units.inchesToMeters(12.0);
   public static final double kHeightL2Meters  = Units.inchesToMeters(24.0);
   public static final double kHeightL3Meters  = Units.inchesToMeters(36.0);
-  public static final double kHeightL4Meters  = Units.inchesToMeters(50.0);
+  public static final double kHeightL4Meters  = Units.inchesToMeters(45.0);
 
   // ------------------------------------------------------------
   // Control constants

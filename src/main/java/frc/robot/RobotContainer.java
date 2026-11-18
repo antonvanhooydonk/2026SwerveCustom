@@ -100,6 +100,7 @@ public class RobotContainer {
     configureEventTriggers();
    
     // silence joystick warnings during testing
+    if ()
     DriverStation.silenceJoystickConnectionWarning(true);
 
     // preload PathPlanner Path finding
@@ -171,16 +172,20 @@ public class RobotContainer {
    * controllers or {@link edu.wpi.first.wpilibj2.command.button.CommandJoystick Flight joysticks}.
    */
   private void configureButtonBindings() {
-    // pit-only: 
+    // pit-only: zero mechanisms at their current positions
     // 1. zero the turret (centered) 
     // 2. home the elevator (bottom) 
-    // 3. home the climber (straight up) 
-    // at their current positions.
-    RobotModeTriggers.disabled().and(driverXbox.back()).onTrue(Commands.parallel(
-      climberSubsystem.setHomePositionCommand(),
-      elevatorSubsystem.setHomePositionCommand(),
-      turretSubsystem.setHomePositionCommand()
-    ).ignoringDisable(true));
+    // 3. home the climber (straight up)
+    RobotModeTriggers
+      .disabled()
+      .and(driverXbox.back())
+      .and(driverXbox.start())
+      .onTrue(Commands.parallel(
+        climberSubsystem.setHomePositionCommand(),
+        elevatorSubsystem.setHomePositionCommand(),
+        turretSubsystem.setHomePositionCommand()
+      )
+      .ignoringDisable(true));
 
     // toggles the drive brake mode: brake vs coast
     RobotModeTriggers.disabled().and(driverXbox.start()).onTrue(driveSubsystem.toggleBrakeModeCommand());

@@ -26,8 +26,8 @@ public final class TurretConstants {
   // ------------------------------------------------------------
   public static final double kAngleToleranceDegrees         =  1.0;
   public static final double kMoveTimeoutSeconds            =  3.0; // timeout for moving the turret, in seconds
-  public static final double kManualClockwiseVoltage        =  6.0;
-  public static final double kManualCounterClockwiseVoltage = -6.0;
+  public static final double kManualClockwiseVoltage        = -6.0;
+  public static final double kManualCounterClockwiseVoltage =  6.0;
 
   // ------------------------------------------------------------
   // MotionMagic constraints

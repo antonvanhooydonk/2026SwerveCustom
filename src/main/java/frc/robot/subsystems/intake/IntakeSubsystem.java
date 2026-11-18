@@ -279,7 +279,7 @@ public class IntakeSubsystem extends SubsystemBase {
    * @return True if spinning
    */
   private boolean isRollerSpinning() {
-    return getRollerRPM() > IntakeConstants.kRollerMinSpinningRPM;
+    return Math.abs(getRollerRPM()) > IntakeConstants.kRollerMinSpinningRPM;
   }
 
   /**

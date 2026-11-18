@@ -248,7 +248,7 @@ public class FeederSubsystem extends SubsystemBase {
    * @return True if spinning
    */
   private boolean isSpinning() {
-    return getRPM() > FeederConstants.kFeederMinSpinningRPM;
+    return Math.abs(getRPM()) > FeederConstants.kFeederMinSpinningRPM;
   }
 
   // ---------------------------------------------------------------------------------------

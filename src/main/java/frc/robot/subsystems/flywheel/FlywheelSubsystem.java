@@ -289,7 +289,7 @@ public class FlywheelSubsystem extends SubsystemBase {
    * @return True if spinning
    */
   private boolean isSpinning() {
-    return getRPM() > FlywheelConstants.kFlywheelMinSpinningRPM;
+    return Math.abs(getRPM()) > FlywheelConstants.kFlywheelMinSpinningRPM;
   }
 
   // ---------------------------------------------------------------------------------------

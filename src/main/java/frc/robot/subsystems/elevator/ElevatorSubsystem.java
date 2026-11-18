@@ -88,7 +88,7 @@ public class ElevatorSubsystem extends SubsystemBase {
       CANConstants.kElevatorLeaderMotorID,
       CANConstants.kElevatorFollowerMotorID,
       getMotorConfig(),
-      false
+      true
     );
     leaderMotor = motors.leader();
     followerMotor = motors.follower();
@@ -383,6 +383,7 @@ public class ElevatorSubsystem extends SubsystemBase {
    */
   private void resetEncoder() {
     leaderMotor.setPosition(0);
+    followerMotor.setPosition(0);
   }
 
   /**
