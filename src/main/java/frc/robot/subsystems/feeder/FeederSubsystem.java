@@ -104,7 +104,7 @@ public class FeederSubsystem extends SubsystemBase {
    * This method is called once during subsystem initialization.
    */
   private void initTuningDashboard() {
-    if (TuningConstants.kTuneFeeder) {
+    if (TuningConstants.isActive(TuningConstants.kTuneFeeder)) {
       SmartDashboard.putNumber("Feeder/P", FeederConstants.kP);
       SmartDashboard.putNumber("Feeder/I", FeederConstants.kI);
       SmartDashboard.putNumber("Feeder/D", FeederConstants.kD);
@@ -119,7 +119,7 @@ public class FeederSubsystem extends SubsystemBase {
    * This allows for real-time tuning of PIDF constants without redeploying code.
    */
   private void getTuningFromDashboard() {
-    if (!TuningConstants.kTuneFeeder) return;
+    if (!TuningConstants.isActive(TuningConstants.kTuneFeeder)) return;
 
     // Get the current tuning values from the SmartDashboard
     double[] current = {

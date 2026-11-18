@@ -206,7 +206,7 @@ public class TurretSubsystem extends SubsystemBase {
    * This method is called once during subsystem initialization.
    */
   private void initTuningDashboard() {
-    if (TuningConstants.kTuneTurret) {
+    if (TuningConstants.isActive(TuningConstants.kTuneTurret)) {
       SmartDashboard.putNumber("Turret/P", TurretConstants.kP);
       SmartDashboard.putNumber("Turret/I", TurretConstants.kI);
       SmartDashboard.putNumber("Turret/D", TurretConstants.kD);
@@ -221,7 +221,7 @@ public class TurretSubsystem extends SubsystemBase {
    * This allows for real-time tuning of PIDF constants without redeploying code.
    */
   private void getTuningFromDashboard() {
-    if (!TuningConstants.kTuneTurret) return;
+    if (!TuningConstants.isActive(TuningConstants.kTuneTurret)) return;
 
     // Get the current tuning values from the SmartDashboard
     double[] current = {

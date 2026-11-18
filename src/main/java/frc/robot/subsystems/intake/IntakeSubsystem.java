@@ -120,7 +120,7 @@ public class IntakeSubsystem extends SubsystemBase {
    * This method is called once during subsystem initialization.
    */
   private void initTuningDashboard() {
-    if (TuningConstants.kTuneIntake) {
+    if (TuningConstants.isActive(TuningConstants.kTuneIntake)) {
       SmartDashboard.putNumber("Intake/P", IntakeConstants.kP);
       SmartDashboard.putNumber("Intake/I", IntakeConstants.kI);
       SmartDashboard.putNumber("Intake/D", IntakeConstants.kD);
@@ -135,7 +135,7 @@ public class IntakeSubsystem extends SubsystemBase {
    * This allows for real-time tuning of PIDF constants without redeploying code.
    */
   private void getTuningFromDashboard() {
-    if (!TuningConstants.kTuneIntake) return;
+    if (!TuningConstants.isActive(TuningConstants.kTuneIntake)) return;
 
     // Get the current tuning values from the SmartDashboard
     double[] current = {

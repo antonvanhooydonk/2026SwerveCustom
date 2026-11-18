@@ -201,7 +201,7 @@ public class ElevatorSubsystem extends SubsystemBase {
    * This method is called once during subsystem initialization.
    */
   private void initTuningDashboard() {
-    if (TuningConstants.kTuneElevator) {
+    if (TuningConstants.isActive(TuningConstants.kTuneElevator)) {
       SmartDashboard.putNumber("Elevator/P", ElevatorConstants.kP);
       SmartDashboard.putNumber("Elevator/I", ElevatorConstants.kI);
       SmartDashboard.putNumber("Elevator/D", ElevatorConstants.kD);
@@ -217,7 +217,7 @@ public class ElevatorSubsystem extends SubsystemBase {
    * This allows for real-time tuning of PIDF constants without redeploying code.
    */
   private void getTuningFromDashboard() {
-    if (!TuningConstants.kTuneElevator) return;
+    if (!TuningConstants.isActive(TuningConstants.kTuneElevator)) return;
 
     // Get the current tuning values from the SmartDashboard
     double[] current = {

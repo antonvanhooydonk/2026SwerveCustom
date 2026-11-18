@@ -10,6 +10,7 @@ import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.util.Units;
+import edu.wpi.first.wpilibj.DriverStation;
 
 /**
  * The Constants class provides a convenient place for teams to hold robot-wide numerical or boolean constants. This
@@ -39,7 +40,15 @@ public final class Constants {
     public static final boolean kTuneFeeder   = true;
     public static final boolean kTuneFlywheel = true;
     public static final boolean kTuneIntake   = true;
-    public static final boolean kTuneTurret   = true;    
+    public static final boolean kTuneTurret   = true;
+
+    /**
+     * Tuning is allowed only when the flag is on AND we're not on a competition field.
+     * Evaluate at runtime: FMS attaches after the robot code starts.
+     */
+    public static boolean isActive(boolean flag) {
+      return flag && !DriverStation.isFMSAttached();
+    }
   }
 
   /**

@@ -144,7 +144,7 @@ public class FlywheelSubsystem extends SubsystemBase {
    * This method is called once during subsystem initialization.
    */
   private void initTuningDashboard() {
-    if (TuningConstants.kTuneFlywheel) {
+    if (TuningConstants.isActive(TuningConstants.kTuneFlywheel)) {
       SmartDashboard.putNumber("Flywheel/P", FlywheelConstants.kP);
       SmartDashboard.putNumber("Flywheel/I", FlywheelConstants.kI);
       SmartDashboard.putNumber("Flywheel/D", FlywheelConstants.kD);
@@ -159,7 +159,7 @@ public class FlywheelSubsystem extends SubsystemBase {
    * This allows for real-time tuning of PIDF constants without redeploying code.
    */
   private void getTuningFromDashboard() {
-    if (!TuningConstants.kTuneFlywheel) return;
+    if (!TuningConstants.isActive(TuningConstants.kTuneFlywheel)) return;
 
     // Get the current tuning values from the SmartDashboard
     double[] current = {

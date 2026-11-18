@@ -101,7 +101,7 @@ public class ClimberSubsystem extends SubsystemBase {
    * This method is called once during subsystem initialization.
    */
   private void initTuningDashboard() {
-    if (TuningConstants.kTuneClimber) {
+    if (TuningConstants.isActive(TuningConstants.kTuneClimber)) {
       SmartDashboard.putNumber("Climber/P", ClimberConstants.kP);
       SmartDashboard.putNumber("Climber/I", ClimberConstants.kI);
       SmartDashboard.putNumber("Climber/D", ClimberConstants.kD);
@@ -116,7 +116,7 @@ public class ClimberSubsystem extends SubsystemBase {
    * This allows for real-time tuning of PIDF constants without redeploying code.
    */
   private void getTuningFromDashboard() {
-    if (!TuningConstants.kTuneClimber) return;
+    if (!TuningConstants.isActive(TuningConstants.kTuneClimber)) return;
 
     // Get the current tuning values from the SmartDashboard
     double[] current = {
