@@ -21,6 +21,14 @@ import edu.wpi.first.math.util.Units;
  */
 public final class Constants {
   /**
+   * USB constants 
+   */
+  public static final class USBConstants {
+    public static final int kDriverPort = 0;
+    public static final int kOperatorPort = 1;
+  }
+
+  /**
    * Tuning constants - Turn dashboard tuning on/off for each subsystem.  
    *                    SET TO FALSE AT COMPETITIONS.
    */

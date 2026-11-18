@@ -4,15 +4,30 @@
 
 package frc.robot;
 
+import edu.wpi.first.math.filter.Debouncer;
+import edu.wpi.first.math.filter.Debouncer.DebounceType;
+import edu.wpi.first.wpilibj.Alert;
+import edu.wpi.first.wpilibj.Alert.AlertType;
 import edu.wpi.first.wpilibj.DataLogManager;
 import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.RobotBase;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
 
+import frc.robot.Constants.USBConstants;
+
 public class Robot extends TimedRobot {
   private final RobotContainer m_robotContainer;
   private Command m_autonomousCommand;
+
+  private final Alert driverControllerAlert = new Alert(
+    "Driver controller (port " + USBConstants.kDriverPort + ") is disconnected!", 
+    AlertType.kError
+  );
+
+  // Debounce so a momentary USB blip doesn't flash the alert
+  private final Debouncer driverDisconnectDebouncer = new Debouncer(0.25, DebounceType.kRising);
 
   public Robot() {
     // Start WPILib data logging (writes .wpilog to the roboRIO, or USB stick if present)
@@ -35,6 +50,13 @@ public class Robot extends TimedRobot {
     // subsystem periodic() methods. This must be called from the robot's periodic block in order 
     // for anything in the Command-based framework to work.
     CommandScheduler.getInstance().run();
+
+    // Show an alert whenever the driver controller is not connected
+    driverControllerAlert.set(driverDisconnectDebouncer.calculate(
+      RobotBase.isReal() && 
+      DriverStation.isFMSAttached() && 
+      !DriverStation.isJoystickConnected(USBConstants.kDriverPort)
+    ));
   }
 
   @Override

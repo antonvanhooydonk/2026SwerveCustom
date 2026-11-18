@@ -18,7 +18,7 @@ import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj2.command.button.RobotModeTriggers;
 import edu.wpi.first.wpilibj2.command.button.Trigger;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction;
-
+import frc.robot.Constants.USBConstants;
 import frc.robot.commands.Feedback;
 import frc.robot.commands.Scoring;
 import frc.robot.shared.StartingPoseGuide;
@@ -36,7 +36,7 @@ import frc.robot.subsystems.vision.VisionSubsystem;
 
 public class RobotContainer {
   // Driver controllers
-  private final CommandXboxController driverXbox = new CommandXboxController(0);
+  private final CommandXboxController driverXbox = new CommandXboxController(USBConstants.kDriverPort);
    
   // Subsystems
   private final ClimberSubsystem climberSubsystem = new ClimberSubsystem();
@@ -98,10 +98,6 @@ public class RobotContainer {
 
     // configure state event triggers
     configureEventTriggers();
-   
-    // silence joystick warnings during testing
-    if ()
-    DriverStation.silenceJoystickConnectionWarning(true);
 
     // preload PathPlanner Path finding
     CommandScheduler.getInstance().schedule(PathfindingCommand.warmupCommand());
