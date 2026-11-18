@@ -24,7 +24,7 @@ public final class Constants {
    * USB constants 
    */
   public static final class USBConstants {
-    public static final int kDriverPort = 0;
+    public static final int kDriverPort   = 0;
     public static final int kOperatorPort = 1;
   }
 
@@ -33,25 +33,23 @@ public final class Constants {
    *                    SET TO FALSE AT COMPETITIONS.
    */
   public static final class TuningConstants {
-    public static final boolean kTuneClimber = true;
-    public static final boolean kTuneDrive = true;
+    public static final boolean kTuneClimber  = true;
+    public static final boolean kTuneDrive    = true;
     public static final boolean kTuneElevator = true;
-    public static final boolean kTuneFeeder = true;
+    public static final boolean kTuneFeeder   = true;
     public static final boolean kTuneFlywheel = true;
-    public static final boolean kTuneIntake = true;
-    public static final boolean kTuneTurret = true;    
+    public static final boolean kTuneIntake   = true;
+    public static final boolean kTuneTurret   = true;    
   }
 
   /**
    * Analog IO constants
    */
   public static final class AnalogConstants {
-    public static final int kFrontLeftAbsEncoderID = 0;
+    public static final int kFrontLeftAbsEncoderID  = 0;
     public static final int kFrontRightAbsEncoderID = 1;
-    public static final int kBackLeftAbsEncoderID = 3;
-    public static final int kBackRightAbsEncoderID = 2;
-    
-    public static final int kArmMotorID = 15;
+    public static final int kBackLeftAbsEncoderID   = 3;
+    public static final int kBackRightAbsEncoderID  = 2;
   }
 
   /**
@@ -69,14 +67,14 @@ public final class Constants {
     // FR: encoder = A1, steer = CAN8, drive = CAN12
     // BL: encoder = A3, steer = CAN4, drive = CAN14
     // BR: encoder = A2, steer = CAN6, drive = CAN13
-    public static final int kFrontLeftDriveID = 11;
-    public static final int kFrontLeftSteerID = 2;
-    public static final int kFrontRightDriveID = 12;
-    public static final int kFrontRightSteerID = 8;
-    public static final int kBackLeftDriveID = 14;
-    public static final int kBackLeftSteerID = 4;
-    public static final int kBackRightDriveID = 13;
-    public static final int kBackRightSteerID = 6;
+    public static final int kFrontLeftDriveID   = 11;
+    public static final int kFrontLeftSteerID   = 2;
+    public static final int kFrontRightDriveID  = 12;
+    public static final int kFrontRightSteerID  = 8;
+    public static final int kBackLeftDriveID    = 14;
+    public static final int kBackLeftSteerID    = 4;
+    public static final int kBackRightDriveID   = 13;
+    public static final int kBackRightSteerID   = 6;
 
     // Arm motor ID
     public static final int kArmMotorID = 15;
