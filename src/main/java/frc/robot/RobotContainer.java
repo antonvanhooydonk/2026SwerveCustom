@@ -180,8 +180,7 @@ public class RobotContainer {
         climberSubsystem.setHomePositionCommand(),
         elevatorSubsystem.setHomePositionCommand(),
         turretSubsystem.setHomePositionCommand()
-      )
-      .ignoringDisable(true));
+      ));
 
     // toggles the drive brake mode: brake vs coast
     RobotModeTriggers.disabled().and(driverXbox.start()).onTrue(driveSubsystem.toggleBrakeModeCommand());
