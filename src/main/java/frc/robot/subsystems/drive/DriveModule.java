@@ -628,7 +628,7 @@ public class DriveModule implements Sendable {
    * @return The steering angle in radians
    */
   public double getSteerAngleRadians() {
-    return Utils.normalizeAngleRadians(Conversions.rotationsToRadians(steerEncoder.getPosition(), DriveConstants.kSteerGearRatio));
+    return Utils.normalizeAngleRadians(getSteerPositionRadians());
   }
 
   /**
