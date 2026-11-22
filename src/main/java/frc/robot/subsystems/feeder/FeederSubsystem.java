@@ -50,6 +50,7 @@ public class FeederSubsystem extends SubsystemBase {
   private final VelocityVoltage feederVelocityRequest;
 
   // Cached target (for telemetry)
+  private double currentRPM = 0.0;
   private double targetRPM = 0.0;
 
   // SysId routine
@@ -96,6 +97,13 @@ public class FeederSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
+    // Update current RPM from the feeder motor's velocity
+    currentRPM = Conversions.rpsToRpm(
+      feederMotor.getVelocity().getValueAsDouble(), 
+      FeederConstants.kGearRatio
+    );
+
+    // Update tuning constants from the SmartDashboard if they have changed
     getTuningFromDashboard();
   }
 
@@ -217,10 +225,7 @@ public class FeederSubsystem extends SubsystemBase {
    * @return Current velocity in RPM
    */
   private double getRPM() {
-    return Conversions.rpsToRpm(
-      feederMotor.getVelocity().getValueAsDouble(), 
-      FeederConstants.kGearRatio
-    );
+    return currentRPM;
   }
 
   /**

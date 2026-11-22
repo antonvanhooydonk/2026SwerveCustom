@@ -60,6 +60,7 @@ public class FlywheelSubsystem extends SubsystemBase {
   private final VelocityVoltage flywheelVelocityRequest;
 
   // Cached target (for telemetry)
+  private double currentRPM = 0.0;
   private double targetRPM = 0.0;
 
   // A TreeMap where Key = Distance (meters) and Value = flywheel RPM
@@ -136,6 +137,13 @@ public class FlywheelSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
+    // Update current RPM from the leader motor's velocity
+    currentRPM = Conversions.rpsToRpm(
+      flywheelLeader.getVelocity().getValueAsDouble(), 
+      FlywheelConstants.kGearRatio
+    );
+
+    // Update tuning constants from the SmartDashboard if they have changed
     getTuningFromDashboard();
   }
 
@@ -258,10 +266,7 @@ public class FlywheelSubsystem extends SubsystemBase {
    * @return Current velocity in RPM
    */
   private double getRPM() {
-    return Conversions.rpsToRpm(
-      flywheelLeader.getVelocity().getValueAsDouble(), 
-      FlywheelConstants.kGearRatio
-    );
+    return currentRPM;
   }
 
   /**

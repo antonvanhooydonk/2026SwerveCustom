@@ -54,6 +54,7 @@ public class IntakeSubsystem extends SubsystemBase {
   private final VelocityVoltage rollerVelocityRequest;
 
   // Cached target (for telemetry)
+  private double currentRPM = 0.0;
   private double targetRPM = 0.0;
   private boolean deployed = false;
   
@@ -112,6 +113,13 @@ public class IntakeSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
+    // Update current RPM from the roller motor's velocity
+    currentRPM = Conversions.rpsToRpm(
+      rollerMotor.getVelocity().getValueAsDouble(), 
+      IntakeConstants.kGearRatio
+    );
+
+    // Update tuning constants from the SmartDashboard if they have changed
     getTuningFromDashboard();
   }
 
@@ -233,10 +241,7 @@ public class IntakeSubsystem extends SubsystemBase {
    * @return Current velocity in RPM
    */
   private double getRollerRPM() {
-    return Conversions.rpsToRpm(
-      rollerMotor.getVelocity().getValueAsDouble(), 
-      IntakeConstants.kGearRatio
-    );
+    return currentRPM;
   }
 
   /**
