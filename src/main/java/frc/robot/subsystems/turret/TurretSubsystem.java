@@ -74,6 +74,7 @@ public class TurretSubsystem extends SubsystemBase {
   private final VoltageOut voltageRequest;
 
   // Cached target (for telemetry)
+  private double currentAngleDegrees = 0.0;
   private double targetAngleDegrees = 0.0;
 
   // SysId routine
@@ -140,6 +141,13 @@ public class TurretSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
+    // Update current angle from the turret motor's position
+    currentAngleDegrees = Utils.normalizeAngleDegrees(Conversions.rotationsToDegrees(
+      turretMotor.getPosition().getValueAsDouble(), 
+      TurretConstants.kGearRatio
+    ));
+
+    // Update tuning constants from the SmartDashboard if they have changed
     getTuningFromDashboard();
   }
 
@@ -369,10 +377,7 @@ public class TurretSubsystem extends SubsystemBase {
    * @return Current angle in degrees
    */
   private double getAngleDegrees() {
-    return Utils.normalizeAngleDegrees(Conversions.rotationsToDegrees(
-      turretMotor.getPosition().getValueAsDouble(), 
-      TurretConstants.kGearRatio
-    ));
+    return currentAngleDegrees;
   }
 
   /**

@@ -41,6 +41,7 @@ public class ClimberSubsystem extends SubsystemBase {
   private final SparkClosedLoopController climberController;
 
   // Cached target (for telemetry)
+  private double currentAngleDegrees = 0.0;
   private double targetAngleDegrees = 0.0;
 
   // SysId routine
@@ -93,6 +94,13 @@ public class ClimberSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
+    // Update current angle from the climber encoder's position
+    currentAngleDegrees = Utils.normalizeAngleDegrees(Conversions.rotationsToDegrees(
+      climberEncoder.getPosition(), 
+      ClimberConstants.kSensorToArmRatio
+    ));
+
+    // Update tuning constants from the SmartDashboard if they have changed
     getTuningFromDashboard();
   }
 
@@ -267,10 +275,7 @@ public class ClimberSubsystem extends SubsystemBase {
    * @return Angle in degrees
    */
   private double getAngleDegrees() {
-    return Utils.normalizeAngleDegrees(Conversions.rotationsToDegrees(
-      climberEncoder.getPosition(), 
-      ClimberConstants.kSensorToArmRatio
-    ));
+    return currentAngleDegrees;
   }
   
   /**

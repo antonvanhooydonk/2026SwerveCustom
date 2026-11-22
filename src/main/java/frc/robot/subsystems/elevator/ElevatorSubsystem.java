@@ -67,6 +67,7 @@ public class ElevatorSubsystem extends SubsystemBase {
   private final VoltageOut voltageRequest;
 
   // Target position (for telemetry)
+  private double currentHeightMeters = 0.0;
   private double targetHeightMeters = 0.0;
 
   // SysId routine
@@ -137,6 +138,14 @@ public class ElevatorSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
+    // Update current height from the leader motor's position
+    currentHeightMeters = Conversions.rotationsToMeters(
+      leaderMotor.getPosition().getValueAsDouble(),
+      ElevatorConstants.kGearRatio,
+      ElevatorConstants.kSpoolCircumferenceMeters
+    );
+
+    // Update tuning constants from the SmartDashboard if they have changed
     getTuningFromDashboard();
   }
   
@@ -370,11 +379,7 @@ public class ElevatorSubsystem extends SubsystemBase {
    * @return Current height in meters
    */
   private double getHeightMeters() {
-    return Conversions.rotationsToMeters(
-      leaderMotor.getPosition().getValueAsDouble(),
-      ElevatorConstants.kGearRatio,
-      ElevatorConstants.kSpoolCircumferenceMeters
-    );
+    return currentHeightMeters;
   }
   
   /**
