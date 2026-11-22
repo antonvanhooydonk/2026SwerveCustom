@@ -26,9 +26,12 @@ public final class ShotCalculator {
   public record Solution(Translation2d virtualTarget, double distanceMeters) {}
 
   /**
+   * Calculates a shoot-on-the-move virutal target that compensates for time of flight
+   * and movement of the robot chassis.
    * @param turretPose field-relative pose of the turret (use TurretSubsystem.getPose())
    * @param target field-relative target
    * @param fieldSpeeds field-relative chassis speeds (null is treated as stationary)
+   * @return The shot solution for the turret and flywheel
    */
   public static Solution solve(Pose2d turretPose, Translation2d target, ChassisSpeeds fieldSpeeds) {
     double vx = fieldSpeeds == null ? 0.0 : fieldSpeeds.vxMetersPerSecond;
