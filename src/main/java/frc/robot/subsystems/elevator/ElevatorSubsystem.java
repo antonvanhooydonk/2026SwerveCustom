@@ -103,6 +103,7 @@ public class ElevatorSubsystem extends SubsystemBase {
     // NOTE: Do NOT zero the encoder here. The TalonFX keeps its position across a robot code
     // restart and only resets to 0 on a power cycle. Use setHomePositionCommand() (disabled-only).
     leaderMotor.getPosition().waitForUpdate(0.25); // make sure the logged value is not a stale 0
+    updateCachedHeight();
     Utils.logInfo("Elevator startup height (m): " + Utils.showDouble(getHeightMeters()));
 
     // Initialize SysId routine (leader motor only)
@@ -139,11 +140,7 @@ public class ElevatorSubsystem extends SubsystemBase {
   @Override
   public void periodic() {
     // Update current height from the leader motor's position
-    currentHeightMeters = Conversions.rotationsToMeters(
-      leaderMotor.getPosition().getValueAsDouble(),
-      ElevatorConstants.kGearRatio,
-      ElevatorConstants.kSpoolCircumferenceMeters
-    );
+    updateCachedHeight();
 
     // Update tuning constants from the SmartDashboard if they have changed
     getTuningFromDashboard();
@@ -372,6 +369,17 @@ public class ElevatorSubsystem extends SubsystemBase {
 
     // Set the voltage to the leader motor (follower will mirror)
     leaderMotor.setControl(voltageRequest.withOutput(volts));
+  }
+
+  /**
+   * Updates the cached height in meters from the leader motor's encoder position.
+   */
+  private void updateCachedHeight() {
+    currentHeightMeters = Conversions.rotationsToMeters(
+      leaderMotor.getPosition().getValueAsDouble(),
+      ElevatorConstants.kGearRatio,
+      ElevatorConstants.kSpoolCircumferenceMeters
+    );
   }
 
   /**

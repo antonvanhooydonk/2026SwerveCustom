@@ -106,6 +106,7 @@ public class TurretSubsystem extends SubsystemBase {
     // Zeroing in the constructor would silently shift the soft limits whenever the code restarts
     // with the turret away from home. Use setHomePositionCommand() (disabled-only) instead.
     turretMotor.getPosition().waitForUpdate(0.25); // make sure the logged value is not a stale 0
+    updateCachedAngle();
     Utils.logInfo("Turret startup angle (deg): " + Utils.showDouble(getAngleDegrees()));
 
     // Initialize SysId routine
@@ -142,10 +143,7 @@ public class TurretSubsystem extends SubsystemBase {
   @Override
   public void periodic() {
     // Update current angle from the turret motor's position
-    currentAngleDegrees = Utils.normalizeAngleDegrees(Conversions.rotationsToDegrees(
-      turretMotor.getPosition().getValueAsDouble(), 
-      TurretConstants.kGearRatio
-    ));
+    updateCachedAngle();
 
     // Update tuning constants from the SmartDashboard if they have changed
     getTuningFromDashboard();
@@ -370,6 +368,16 @@ public class TurretSubsystem extends SubsystemBase {
 
     // Set the voltage to the turret motor
     turretMotor.setControl(voltageRequest.withOutput(volts));
+  }
+
+  /**
+   * Updates the cached turret angle from the motor's encoder position.
+   */
+  private void updateCachedAngle() {
+    currentAngleDegrees = Utils.normalizeAngleDegrees(Conversions.rotationsToDegrees(
+      turretMotor.getPosition().getValueAsDouble(), 
+      TurretConstants.kGearRatio
+    ));
   }
 
   /**

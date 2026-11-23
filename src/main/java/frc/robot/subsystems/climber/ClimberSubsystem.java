@@ -64,6 +64,7 @@ public class ClimberSubsystem extends SubsystemBase {
     // NOTE: Do NOT zero the encoder here, so a code restart doesn't shift the soft limits.
     // Use setHomePositionCommand() (disabled-only) with the climber straight up.
     // Bench-verify that the Spark encoder position survives a code restart.
+    updateCachedAngle();
     Utils.logInfo("Climber startup angle (deg): " + Utils.showDouble(getAngleDegrees()));
 
     // Initialize SysId routine (leader motor only)
@@ -95,10 +96,7 @@ public class ClimberSubsystem extends SubsystemBase {
   @Override
   public void periodic() {
     // Update current angle from the climber encoder's position
-    currentAngleDegrees = Utils.normalizeAngleDegrees(Conversions.rotationsToDegrees(
-      climberEncoder.getPosition(), 
-      ClimberConstants.kSensorToArmRatio
-    ));
+    updateCachedAngle();
 
     // Update tuning constants from the SmartDashboard if they have changed
     getTuningFromDashboard();
@@ -270,6 +268,16 @@ public class ClimberSubsystem extends SubsystemBase {
     climberMotor.setVoltage(volts);
   }
     
+  /**
+   * Updates the cached climber angle from the encoder position.
+   */
+  private void updateCachedAngle() {
+    currentAngleDegrees = Utils.normalizeAngleDegrees(Conversions.rotationsToDegrees(
+      climberEncoder.getPosition(), 
+      ClimberConstants.kSensorToArmRatio
+    ));
+  }
+
   /**
    * Get the current angle of the climber
    * @return Angle in degrees
