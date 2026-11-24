@@ -87,6 +87,6 @@ public class StartingPoseGuide {
 
     // Visual "you are here" (robot) vs "target" on its own field widget
     field.setRobotPose(currentPose);
-    field.getObject("Target").setPose(targetPose);
+    field.getObject("Auto Align/Target").setPose(targetPose);
   }
 }
