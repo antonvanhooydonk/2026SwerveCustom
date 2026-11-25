@@ -24,7 +24,7 @@ public final class SparkMaxTuner {
   private final String name;
   private final boolean tuneFlag;
   private final Gains base;
-  private final SparkMax motor;
+  private final SparkMax[] motors;
   private double[] last = new double[0];
 
   /**
@@ -33,11 +33,11 @@ public final class SparkMaxTuner {
    * @param base     The gains already applied in the motor config
    * @param motor    The SparkMax to update
    */
-  public SparkMaxTuner(String name, boolean tuneFlag, Gains base, SparkMax motor) {
+  public SparkMaxTuner(String name, boolean tuneFlag, Gains base, SparkMax... motors) {
     this.name = name;
     this.tuneFlag = tuneFlag;
     this.base = base;
-    this.motor = motor;
+    this.motors = motors;
 
     if (tuneFlag) {
       SmartDashboard.putNumber(name + "/P", base.p());
@@ -87,11 +87,13 @@ public final class SparkMaxTuner {
         .kV(cur[4])
         .kA(cur[5]);
 
-    SparkMaxFactory.applyConfig(
-      motor,
-      tune,
-      ResetMode.kNoResetSafeParameters,
-      PersistMode.kNoPersistParameters
-    );
+    for (SparkMax motor : motors) {
+      SparkMaxFactory.applyConfig(
+        motor,
+        tune,
+        ResetMode.kNoResetSafeParameters,
+        PersistMode.kNoPersistParameters
+      );
+    }
   }
 }
