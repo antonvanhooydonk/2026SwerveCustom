@@ -8,10 +8,8 @@ import static edu.wpi.first.units.Units.Rotations;
 import static edu.wpi.first.units.Units.RotationsPerSecond;
 import static edu.wpi.first.units.Units.Volts;
 
-import java.util.Arrays;
 import java.util.function.Supplier;
 
-import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.VelocityVoltage;
 import com.ctre.phoenix6.controls.VoltageOut;
@@ -38,6 +36,7 @@ import frc.robot.shared.ShotCalculator;
 import frc.robot.shared.TalonFXFactory;
 import frc.robot.shared.Utils;
 import frc.robot.shared.TalonFXFactory.MotorPair;
+import frc.robot.shared.TalonFXTuner;
 
 /**
  * Flywheel subsystem using dual Kraken X60 (TalonFX) motors in a
@@ -69,18 +68,20 @@ public class FlywheelSubsystem extends SubsystemBase {
   // SysId routine
   private final SysIdRoutine flywheelSysIdRoutine;
 
-  // Tuning constants from the SmartDashboard (for real-time tuning)
-  private double[] lastTuning = new double[0];
+  private final TalonFXTuner tuner;
 
   /**
    * Creates a new FlywheelSubsystem
    */
   public FlywheelSubsystem() {
+    // Initialize the turret motor configuration
+    TalonFXConfiguration config = getMotorConfig();
+
     // Create leader and follower motors
     MotorPair motors = TalonFXFactory.createMotorPair(
       CANConstants.kFlywheelLeaderMotorID, 
       CANConstants.kFlywheelFollowerMotorID, 
-      getMotorConfig(), 
+      config, 
       true
     );
     flywheelLeader = motors.leader();
@@ -110,9 +111,9 @@ public class FlywheelSubsystem extends SubsystemBase {
 
     // Add data to dashboard
     SmartDashboard.putData("Flywheel", this);
-
-    // Initialize tuning constants on the SmartDashboard for real-time tuning
-    initTuningDashboard();
+    
+    // Initialize the TalonFXTuner for real-time tuning of PIDF constants
+    tuner = new TalonFXTuner("Flywheel", TuningConstants.kTuneFlywheel, config.Slot0, false, flywheelLeader, flywheelFollower);
 
     // Output initialization progress
     Utils.logInfo("Flywheel subsystem initialized");
@@ -144,60 +145,9 @@ public class FlywheelSubsystem extends SubsystemBase {
     );
 
     // Update tuning constants from the SmartDashboard if they have changed
-    getTuningFromDashboard();
+    tuner.update();
   }
 
-  /**
-   * Initialize tuning constants on the SmartDashboard for real-time tuning.
-   * This method is called once during subsystem initialization.
-   */
-  private void initTuningDashboard() {
-    if (TuningConstants.isActive(TuningConstants.kTuneFlywheel)) {
-      SmartDashboard.putNumber("Flywheel/P", FlywheelConstants.kP);
-      SmartDashboard.putNumber("Flywheel/I", FlywheelConstants.kI);
-      SmartDashboard.putNumber("Flywheel/D", FlywheelConstants.kD);
-      SmartDashboard.putNumber("Flywheel/kS", FlywheelConstants.kS);
-      SmartDashboard.putNumber("Flywheel/kV", FlywheelConstants.kV);
-      SmartDashboard.putNumber("Flywheel/kA", FlywheelConstants.kA);
-    }
-  }
-
-  /**
-   * Read tuning constants from SmartDashboard and apply them to the climber motor.
-   * This allows for real-time tuning of PIDF constants without redeploying code.
-   */
-  private void getTuningFromDashboard() {
-    if (!TuningConstants.isActive(TuningConstants.kTuneFlywheel)) return;
-
-    // Get the current tuning values from the SmartDashboard
-    double[] current = {
-      SmartDashboard.getNumber("Flywheel/P", FlywheelConstants.kP),
-      SmartDashboard.getNumber("Flywheel/I", FlywheelConstants.kI),
-      SmartDashboard.getNumber("Flywheel/D", FlywheelConstants.kD),
-      SmartDashboard.getNumber("Flywheel/kS", FlywheelConstants.kS),
-      SmartDashboard.getNumber("Flywheel/kV", FlywheelConstants.kV),
-      SmartDashboard.getNumber("Flywheel/kA", FlywheelConstants.kA),
-    };
-    if (Arrays.equals(current, lastTuning)) return;
-
-    // Cache the current tuning values to avoid unnecessary updates
-    lastTuning = current;
-
-    // Update the controller with the new constants
-    // Only touch Slot0. Applying a fresh TalonFXConfiguration would reset current limits,
-    // soft limits, MotionMagic, neutral mode, etc. back to factory defaults.
-    Slot0Configs slot0 = new Slot0Configs()
-      .withKP(current[0])
-      .withKI(current[1])
-      .withKD(current[2])
-      .withKS(current[3])
-      .withKV(current[4])
-      .withKA(current[5]);
-
-    TalonFXFactory.applySlot0(flywheelLeader, slot0);
-    TalonFXFactory.applySlot0(flywheelFollower, slot0);
-  }
-  
   /**
    * Configure the subsystem motors with the appropriate settings
    */

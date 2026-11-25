@@ -8,9 +8,6 @@ import static edu.wpi.first.units.Units.Rotations;
 import static edu.wpi.first.units.Units.RotationsPerSecond;
 import static edu.wpi.first.units.Units.Volts;
 
-import java.util.Arrays;
-
-import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.VelocityVoltage;
 import com.ctre.phoenix6.controls.VoltageOut;
@@ -34,6 +31,7 @@ import frc.robot.Constants.CANConstants;
 import frc.robot.Constants.TuningConstants;
 import frc.robot.shared.Conversions;
 import frc.robot.shared.TalonFXFactory;
+import frc.robot.shared.TalonFXTuner;
 import frc.robot.shared.Utils;
 
 /**
@@ -61,15 +59,17 @@ public class IntakeSubsystem extends SubsystemBase {
   // SysId routine
   private final SysIdRoutine rollerSysIdRoutine;
 
-  // Tuning constants from the SmartDashboard (for real-time tuning)
-  private double[] lastTuning = new double[0];
+  private final TalonFXTuner tuner;
 
   /**
    * Creates a new IntakeSubsystem
    */
   public IntakeSubsystem() {
+    // Initialize the turret motor configuration
+    TalonFXConfiguration config = getMotorConfig();
+
     // Create roller motor
-    rollerMotor = TalonFXFactory.createMotor(CANConstants.kIntakeRollerMotorID, getMotorConfig());
+    rollerMotor = TalonFXFactory.createMotor(CANConstants.kIntakeRollerMotorID, config);
     
     // Initialize deploy/retract solenoid
     deploySolenoid = new DoubleSolenoid(
@@ -103,10 +103,10 @@ public class IntakeSubsystem extends SubsystemBase {
 
     // Add data to dashboard
     SmartDashboard.putData("Intake", this);
-
-    // Initialize tuning constants on the SmartDashboard for real-time tuning
-    initTuningDashboard();
-
+    
+    // Initialize the TalonFXTuner for real-time tuning of PIDF constants
+    tuner = new TalonFXTuner("Intake", TuningConstants.kTuneIntake, config.Slot0, false, rollerMotor);
+    
     // Output initialization progress
     Utils.logInfo("Intake subsystem initialized");
   }
@@ -120,59 +120,9 @@ public class IntakeSubsystem extends SubsystemBase {
     );
 
     // Update tuning constants from the SmartDashboard if they have changed
-    getTuningFromDashboard();
+    tuner.update();
   }
 
-  /**
-   * Initialize tuning constants on the SmartDashboard for real-time tuning.
-   * This method is called once during subsystem initialization.
-   */
-  private void initTuningDashboard() {
-    if (TuningConstants.isActive(TuningConstants.kTuneIntake)) {
-      SmartDashboard.putNumber("Intake/P", IntakeConstants.kP);
-      SmartDashboard.putNumber("Intake/I", IntakeConstants.kI);
-      SmartDashboard.putNumber("Intake/D", IntakeConstants.kD);
-      SmartDashboard.putNumber("Intake/kS", IntakeConstants.kS);
-      SmartDashboard.putNumber("Intake/kV", IntakeConstants.kV);
-      SmartDashboard.putNumber("Intake/kA", IntakeConstants.kA);
-    }
-  }
-
-  /**
-   * Read tuning constants from SmartDashboard and apply them to the climber motor.
-   * This allows for real-time tuning of PIDF constants without redeploying code.
-   */
-  private void getTuningFromDashboard() {
-    if (!TuningConstants.isActive(TuningConstants.kTuneIntake)) return;
-
-    // Get the current tuning values from the SmartDashboard
-    double[] current = {
-      SmartDashboard.getNumber("Intake/P", IntakeConstants.kP),
-      SmartDashboard.getNumber("Intake/I", IntakeConstants.kI),
-      SmartDashboard.getNumber("Intake/D", IntakeConstants.kD),
-      SmartDashboard.getNumber("Intake/kS", IntakeConstants.kS),
-      SmartDashboard.getNumber("Intake/kV", IntakeConstants.kV),
-      SmartDashboard.getNumber("Intake/kA", IntakeConstants.kA),
-    };
-    if (Arrays.equals(current, lastTuning)) return;
-
-    // Cache the current tuning values to avoid unnecessary updates
-    lastTuning = current;
-
-    // Update the controller with the new constants
-    // Only touch Slot0. Applying a fresh TalonFXConfiguration would reset current limits,
-    // soft limits, MotionMagic, neutral mode, etc. back to factory defaults.
-    Slot0Configs slot0 = new Slot0Configs()
-      .withKP(current[0])
-      .withKI(current[1])
-      .withKD(current[2])
-      .withKS(current[3])
-      .withKV(current[4])
-      .withKA(current[5]);
-
-    TalonFXFactory.applySlot0(rollerMotor, slot0);
-  }
-  
   /**
    * Configure the subsystem motors with the appropriate settings
    */

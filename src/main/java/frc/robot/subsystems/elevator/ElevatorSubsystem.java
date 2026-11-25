@@ -8,9 +8,6 @@ import static edu.wpi.first.units.Units.Rotations;
 import static edu.wpi.first.units.Units.RotationsPerSecond;
 import static edu.wpi.first.units.Units.Volts;
 
-import java.util.Arrays;
-
-import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.MotionMagicVoltage;
 import com.ctre.phoenix6.controls.VoltageOut;
@@ -40,6 +37,7 @@ import frc.robot.shared.Conversions;
 import frc.robot.shared.RobotVisualizer;
 import frc.robot.shared.TalonFXFactory;
 import frc.robot.shared.TalonFXFactory.MotorPair;
+import frc.robot.shared.TalonFXTuner;
 import frc.robot.shared.Utils;
 
 /**
@@ -73,22 +71,24 @@ public class ElevatorSubsystem extends SubsystemBase {
   // SysId routine
   private final SysIdRoutine sysIdRoutine;
 
-  // Tuning constants from the SmartDashboard (for real-time tuning)
-  private double[] lastTuning = new double[0];
-
   // Simulation (null on a real robot)
   private ElevatorSim elevatorSim;
   private TalonFXSimState leaderSim;
+
+  private final TalonFXTuner tuner;
 
   /**
    * Creates a new ElevatorSubsystem
    */
   public ElevatorSubsystem() {
+    // Initialize the turret motor configuration
+    TalonFXConfiguration config = getMotorConfig();
+
     // Create leader and follower motors
     MotorPair motors = TalonFXFactory.createMotorPair(
       CANConstants.kElevatorLeaderMotorID,
       CANConstants.kElevatorFollowerMotorID,
-      getMotorConfig(),
+      config,
       true
     );
     leaderMotor = motors.leader();
@@ -125,14 +125,14 @@ public class ElevatorSubsystem extends SubsystemBase {
     // Add data to dashboard
     SmartDashboard.putData("Elevator", this);
 
-    // Initialize tuning constants on the SmartDashboard for real-time tuning
-    initTuningDashboard();
-
     // Initialize simulation if running in simulation mode
     if (RobotBase.isSimulation()) {
       initSimulation();
     }
-
+    
+    // Initialize the TalonFXTuner for real-time tuning of PIDF constants
+    tuner = new TalonFXTuner("Elevator", TuningConstants.kTuneElevator, config.Slot0, true, leaderMotor, followerMotor);
+    
     // Output initialization progress
     Utils.logInfo("Elevator subsystem initialized");
   }
@@ -143,7 +143,7 @@ public class ElevatorSubsystem extends SubsystemBase {
     updateCachedHeight();
 
     // Update tuning constants from the SmartDashboard if they have changed
-    getTuningFromDashboard();
+    tuner.update();
   }
   
   @Override
@@ -202,61 +202,6 @@ public class ElevatorSubsystem extends SubsystemBase {
     ));
   }
 
-  /**
-   * Initialize tuning constants on the SmartDashboard for real-time tuning.
-   * This method is called once during subsystem initialization.
-   */
-  private void initTuningDashboard() {
-    if (TuningConstants.isActive(TuningConstants.kTuneElevator)) {
-      SmartDashboard.putNumber("Elevator/P", ElevatorConstants.kP);
-      SmartDashboard.putNumber("Elevator/I", ElevatorConstants.kI);
-      SmartDashboard.putNumber("Elevator/D", ElevatorConstants.kD);
-      SmartDashboard.putNumber("Elevator/kS", ElevatorConstants.kS);
-      SmartDashboard.putNumber("Elevator/kV", ElevatorConstants.kV);
-      SmartDashboard.putNumber("Elevator/kA", ElevatorConstants.kA);
-      SmartDashboard.putNumber("Elevator/kG", ElevatorConstants.kG);
-    }
-  }
-
-  /**
-   * Read tuning constants from SmartDashboard and apply them to the climber motor.
-   * This allows for real-time tuning of PIDF constants without redeploying code.
-   */
-  private void getTuningFromDashboard() {
-    if (!TuningConstants.isActive(TuningConstants.kTuneElevator)) return;
-
-    // Get the current tuning values from the SmartDashboard
-    double[] current = {
-      SmartDashboard.getNumber("Elevator/P", ElevatorConstants.kP),
-      SmartDashboard.getNumber("Elevator/I", ElevatorConstants.kI),
-      SmartDashboard.getNumber("Elevator/D", ElevatorConstants.kD),
-      SmartDashboard.getNumber("Elevator/kS", ElevatorConstants.kS),
-      SmartDashboard.getNumber("Elevator/kV", ElevatorConstants.kV),
-      SmartDashboard.getNumber("Elevator/kA", ElevatorConstants.kA),
-      SmartDashboard.getNumber("Elevator/kG", ElevatorConstants.kG)
-    };
-    if (Arrays.equals(current, lastTuning)) return;
-
-    // Cache the current tuning values to avoid unnecessary updates
-    lastTuning = current;
-    
-    // Update the controller with the new constants
-    // Only touch Slot0. Applying a fresh TalonFXConfiguration would reset current limits,
-    // soft limits, MotionMagic, neutral mode, etc. back to factory defaults.
-    Slot0Configs slot0 = new Slot0Configs()
-      .withKP(current[0])
-      .withKI(current[1])
-      .withKD(current[2])
-      .withKS(current[3])
-      .withKV(current[4])
-      .withKA(current[5])
-      .withKG(current[6])
-      .withGravityType(GravityTypeValue.Elevator_Static);
-
-    TalonFXFactory.applySlot0(leaderMotor, slot0);
-    TalonFXFactory.applySlot0(followerMotor, slot0);
-  }
-  
   /**
    * Configure the subsystem motors with the appropriate settings
    */
