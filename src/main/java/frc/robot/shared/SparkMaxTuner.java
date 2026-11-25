@@ -19,24 +19,27 @@ import frc.robot.Constants.TuningConstants;
  */
 public final class SparkMaxTuner {
   /** Initial gains, in the order they appear on the dashboard. */
-  public record Gains(double p, double i, double d, double kS, double kV, double kA) {}
+  public record Gains(double p, double i, double d, double kS, double kV, double kA, double kG) {}
 
   private final String name;
   private final boolean tuneFlag;
   private final Gains base;
+  private final boolean withGravity;
   private final SparkMax[] motors;
   private double[] last = new double[0];
 
   /**
-   * @param name     Dashboard prefix, e.g. "Climber" -> "Climber/P"
-   * @param tuneFlag The subsystem's TuningConstants flag
-   * @param base     The gains already applied in the motor config
-   * @param motor    The SparkMax to update
+   * @param name        Dashboard prefix, e.g. "Climber" -> "Climber/P"
+   * @param tuneFlag    The subsystem's TuningConstants flag
+   * @param base        The gains already applied in the motor config
+   * @param withGravity True to expose kG (elevator/arm only)
+   * @param motors      Every motor that should receive the new gains (leader and follower)
    */
-  public SparkMaxTuner(String name, boolean tuneFlag, Gains base, SparkMax... motors) {
+  public SparkMaxTuner(String name, boolean tuneFlag, Gains base, boolean withGravity, SparkMax... motors) {
     this.name = name;
     this.tuneFlag = tuneFlag;
     this.base = base;
+    this.withGravity = withGravity;
     this.motors = motors;
 
     if (tuneFlag) {
@@ -46,6 +49,9 @@ public final class SparkMaxTuner {
       SmartDashboard.putNumber(name + "/kS", base.kS());
       SmartDashboard.putNumber(name + "/kV", base.kV());
       SmartDashboard.putNumber(name + "/kA", base.kA());
+      if (withGravity) {
+        SmartDashboard.putNumber(name + "/kG", base.kG());
+      }
 
       // Seed from the published values so the first update() doesn't redundantly re-apply them
       last = read();
@@ -63,7 +69,8 @@ public final class SparkMaxTuner {
       SmartDashboard.getNumber(name + "/D", base.d()),
       SmartDashboard.getNumber(name + "/kS", base.kS()),
       SmartDashboard.getNumber(name + "/kV", base.kV()),
-      SmartDashboard.getNumber(name + "/kA", base.kA())
+      SmartDashboard.getNumber(name + "/kA", base.kA()),
+      withGravity ? SmartDashboard.getNumber(name + "/kG", base.kG) : base.kG
     };
   }
 
@@ -86,6 +93,10 @@ public final class SparkMaxTuner {
         .kS(cur[3])
         .kV(cur[4])
         .kA(cur[5]);
+        
+    if (withGravity) {
+      tune.closedLoop.feedForward.kG(cur[6]);
+    }
 
     for (SparkMax motor : motors) {
       SparkMaxFactory.applyConfig(

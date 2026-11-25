@@ -91,8 +91,9 @@ public class ClimberSubsystem extends SubsystemBase {
       TuningConstants.kTuneClimber, 
       new SparkMaxTuner.Gains(
         ClimberConstants.kP, ClimberConstants.kI, ClimberConstants.kD, 
-        ClimberConstants.kS, ClimberConstants.kV, ClimberConstants.kA
+        ClimberConstants.kS, ClimberConstants.kV, ClimberConstants.kA, ClimberConstants.kG
       ), 
+      true,
       climberMotor
     );
       
