@@ -8,11 +8,7 @@ import static edu.wpi.first.units.Units.Rotations;
 import static edu.wpi.first.units.Units.RotationsPerSecond;
 import static edu.wpi.first.units.Units.Volts;
 
-import java.util.Arrays;
-
-import com.revrobotics.PersistMode;
 import com.revrobotics.RelativeEncoder;
-import com.revrobotics.ResetMode;
 import com.revrobotics.spark.SparkBase.ControlType;
 import com.revrobotics.spark.SparkClosedLoopController;
 import com.revrobotics.spark.SparkMax;
@@ -32,6 +28,7 @@ import frc.robot.Constants.CANConstants;
 import frc.robot.Constants.TuningConstants;
 import frc.robot.shared.Conversions;
 import frc.robot.shared.SparkMaxFactory;
+import frc.robot.shared.SparkMaxTuner;
 import frc.robot.shared.Utils;
 
 public class ClimberSubsystem extends SubsystemBase {
@@ -47,13 +44,15 @@ public class ClimberSubsystem extends SubsystemBase {
   // SysId routine
   private final SysIdRoutine sysIdRoutine;
 
-  // Tuning constants from the SmartDashboard (for real-time tuning)
-  private double[] lastTuning = new double[0];
+  private final SparkMaxTuner tuner;
  
   /** Creates a new ClimberSubsystem. */
-  public ClimberSubsystem() {    
+  public ClimberSubsystem() {
+    // Initialize the turret motor configuration
+    SparkMaxConfig config = getMotorConfig();
+
     // Initialize the climber motor (we're using a brushed CIM for the climber)
-    climberMotor = SparkMaxFactory.createBrushedMotor(CANConstants.kClimberMotorID, getMotorConfig());
+    climberMotor = SparkMaxFactory.createBrushedMotor(CANConstants.kClimberMotorID, config);
 
     // Initialize closed-loop controller
     climberController = climberMotor.getClosedLoopController();
@@ -85,10 +84,18 @@ public class ClimberSubsystem extends SubsystemBase {
 
     // Initialize dashboard
     SmartDashboard.putData("Climber", this);
-
-    // Initialize tuning constants on the SmartDashboard for real-time tuning
-    initTuningDashboard();
     
+    // Initialize the TalonFXTuner for real-time tuning of PIDF constants
+    tuner = new SparkMaxTuner(
+      "Climber", 
+      TuningConstants.kTuneClimber, 
+      new SparkMaxTuner.Gains(
+        ClimberConstants.kP, ClimberConstants.kI, ClimberConstants.kD, 
+        ClimberConstants.kS, ClimberConstants.kV, ClimberConstants.kA
+      ), 
+      climberMotor
+    );
+      
     // Output initialization progress
     Utils.logInfo("Climber subsystem initialized");
   }
@@ -99,64 +106,7 @@ public class ClimberSubsystem extends SubsystemBase {
     updateCachedAngle();
 
     // Update tuning constants from the SmartDashboard if they have changed
-    getTuningFromDashboard();
-  }
-
-  /**
-   * Initialize tuning constants on the SmartDashboard for real-time tuning.
-   * This method is called once during subsystem initialization.
-   */
-  private void initTuningDashboard() {
-    if (TuningConstants.isActive(TuningConstants.kTuneClimber)) {
-      SmartDashboard.putNumber("Climber/P", ClimberConstants.kP);
-      SmartDashboard.putNumber("Climber/I", ClimberConstants.kI);
-      SmartDashboard.putNumber("Climber/D", ClimberConstants.kD);
-      SmartDashboard.putNumber("Climber/kS", ClimberConstants.kS);
-      SmartDashboard.putNumber("Climber/kV", ClimberConstants.kV);
-      SmartDashboard.putNumber("Climber/kA", ClimberConstants.kA);
-    }
-  }
-
-  /**
-   * Read tuning constants from SmartDashboard and apply them to the climber motor.
-   * This allows for real-time tuning of PIDF constants without redeploying code.
-   */
-  private void getTuningFromDashboard() {
-    if (!TuningConstants.isActive(TuningConstants.kTuneClimber)) return;
-
-    // Get the current tuning values from the SmartDashboard
-    double[] current = {
-      SmartDashboard.getNumber("Climber/P", ClimberConstants.kP),
-      SmartDashboard.getNumber("Climber/I", ClimberConstants.kI),
-      SmartDashboard.getNumber("Climber/D", ClimberConstants.kD),
-      SmartDashboard.getNumber("Climber/kS", ClimberConstants.kS),
-      SmartDashboard.getNumber("Climber/kV", ClimberConstants.kV),
-      SmartDashboard.getNumber("Climber/kA", ClimberConstants.kA),
-    };
-    if (Arrays.equals(current, lastTuning)) return;
-
-    // Cache the current tuning values to avoid unnecessary updates
-    lastTuning = current;
-
-    // Update the controller with the new constants
-    SparkMaxConfig tuneConfig = new SparkMaxConfig();
-    tuneConfig.closedLoop
-      .p(current[0])
-      .i(current[1])
-      .d(current[2])
-      .feedForward
-        .kS(current[3])
-        .kV(current[4])
-        .kA(current[5]);
-    
-    // Apply the new configuration to the climber motor
-    // without resetting or persisting parameters
-    SparkMaxFactory.applyConfig(
-      climberMotor, 
-      tuneConfig, 
-      ResetMode.kNoResetSafeParameters, 
-      PersistMode.kNoPersistParameters
-    );
+    tuner.update();
   }
 
   /**
