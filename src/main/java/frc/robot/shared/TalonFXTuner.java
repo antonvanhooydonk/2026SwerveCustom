@@ -47,7 +47,7 @@ public final class TalonFXTuner {
         SmartDashboard.putNumber(name + "/kG", base.kG);
       }
 
-      // Start from the published values so the first update() doesn't redundantly re-apply them
+      // Seed from the published values so the first update() doesn't redundantly re-apply them
       last = read();
     }
   }
