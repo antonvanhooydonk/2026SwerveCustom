@@ -92,11 +92,8 @@ public final class SparkMaxTuner {
       .feedForward
         .kS(cur[3])
         .kV(cur[4])
-        .kA(cur[5]);
-        
-    if (withGravity) {
-      tune.closedLoop.feedForward.kG(cur[6]);
-    }
+        .kA(cur[5])
+        .kG(cur[6]);
 
     for (SparkMax motor : motors) {
       SparkMaxFactory.applyConfig(
