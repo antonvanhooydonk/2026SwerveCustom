@@ -184,6 +184,21 @@ public final class DriveConstants {
     kSwerveModuleTranslations
   );
  
+  /**
+   * ------------------------------------------------------------
+   * Tuning order
+   * ------------------------------------------------------------   * 
+   * 1. Drive kS/kV: run your existing drive SysId routine in test mode. 
+   *    Your current kV = 0.12 is a free-speed estimate and is probably 
+   *    close, but let SysId confirm it.
+   * 2. Drive kP: with kV right, command a step (for example 2 m/s straight) 
+   *    and raise kP until tracking is crisp without chatter. A small kP is 
+   *    typical once kV is accurate.
+   * 3. Steer kP/kD: with the robot on blocks, command 90° steps and watch the angle error.
+   *    Raise kP until the module snaps there, then add a little kD if it overshoots. 
+   *    Leave the steer kS/kV/kA at 0 for position control
+   */
+
   // ------------------------------------------------------------
   // Drive PID constants (tune these each year for the robot)
   // ------------------------------------------------------------
@@ -204,7 +219,7 @@ public final class DriveConstants {
   // ------------------------------------------------------------
   // Tuning Process:
   // 1. Start with P only (I=0, D=0)
-  // 2. Increase P until fast response without overshoot (typically 1.0 - 2.5)
+  // 2. Increase P until fast response without overshoot
   // 3. Add small D if oscillating (typically 0.01 - 0.1)
   // 4. Avoid I unless steady-state error (very rare in steering)
   public static final double kSteerKP = 0.25;   // usually 0.25 - 0.4
