@@ -450,6 +450,20 @@ public class DriveModule implements Sendable {
     return moduleName;
   }
 
+  /** 
+   * For the shared drive tuner. 
+   */
+  public TalonFX getDriveMotor() {
+    return driveMotor;
+  }
+
+  /** 
+   * For the shared steer tuner.
+   */
+  public SparkMax getSteerMotor() {
+    return steerMotor;
+  }
+
   /**
    * Gets the target state of the swerve module
    * @return

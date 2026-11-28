@@ -11,12 +11,15 @@ import static edu.wpi.first.units.Units.Second;
 import static edu.wpi.first.units.Units.Seconds;
 import static edu.wpi.first.units.Units.Volts;
 
+import java.util.Arrays;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.DoubleSupplier;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
+import com.ctre.phoenix6.configs.Slot0Configs;
+import com.ctre.phoenix6.hardware.TalonFX;
 import com.pathplanner.lib.auto.AutoBuilder;
 import com.pathplanner.lib.config.PIDConstants;
 import com.pathplanner.lib.controllers.PPHolonomicDriveController;
@@ -24,6 +27,7 @@ import com.pathplanner.lib.path.PathPlannerPath;
 import com.pathplanner.lib.util.DriveFeedforwards;
 import com.pathplanner.lib.util.swerve.SwerveSetpoint;
 import com.pathplanner.lib.util.swerve.SwerveSetpointGenerator;
+import com.revrobotics.spark.SparkMax;
 
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.VecBuilder;
@@ -60,6 +64,9 @@ import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.Constants.AnalogConstants;
 import frc.robot.Constants.CANConstants;
 import frc.robot.Constants.FieldConstants;
+import frc.robot.Constants.TuningConstants;
+import frc.robot.shared.SparkMaxTuner;
+import frc.robot.shared.TalonFXTuner;
 import frc.robot.shared.Utils;
 
 /**
@@ -120,6 +127,9 @@ public class DriveSubsystem extends SubsystemBase {
   private final MutLinearVelocity sysIdLinVel = MetersPerSecond.mutable(0);
   private final SysIdRoutine driveSysId;
 
+  private final TalonFXTuner driveTuner;
+  private final SparkMaxTuner steerTuner;
+
   /**
    * Creates a new swerve DriveSubsystem using the YAGSL library.
    * @param directory The directory containing the swerve drive JSON configuration
@@ -177,6 +187,39 @@ public class DriveSubsystem extends SubsystemBase {
     for (var module : modules) {
       module.periodic();
     }
+
+    // Live-tunable gains, shared by all four modules (only active per TuningConstants rules)
+    Slot0Configs driveBase = new Slot0Configs()
+      .withKP(DriveConstants.kDriveKP)
+      .withKI(DriveConstants.kDriveKI)
+      .withKD(DriveConstants.kDriveKD)
+      .withKS(DriveConstants.kDriveKS)
+      .withKV(DriveConstants.kDriveKV)
+      .withKA(DriveConstants.kDriveKA);
+
+    driveTuner = new TalonFXTuner(
+      "Drive",
+      TuningConstants.kTuneDrive,
+      driveBase,
+      false,
+      Arrays.stream(modules).map(DriveModule::getDriveMotor).toArray(TalonFX[]::new)
+    );
+
+    steerTuner = new SparkMaxTuner(
+      "Steer",
+      TuningConstants.kTuneDrive,
+      new SparkMaxTuner.Gains(
+        DriveConstants.kSteerKP,
+        DriveConstants.kSteerKI,
+        DriveConstants.kSteerKD,
+        DriveConstants.kSteerKS,
+        DriveConstants.kSteerKV,
+        DriveConstants.kSteerKA,
+        0.0
+      ),
+      false,
+      Arrays.stream(modules).map(DriveModule::getSteerMotor).toArray(SparkMax[]::new)
+    );
 
     // Initialize swerve drive kinematics
     kinematics = new SwerveDriveKinematics(DriveConstants.kSwerveModuleTranslations);
@@ -252,6 +295,10 @@ public class DriveSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
+    // Update the tuners for live PID tuning
+    driveTuner.update();
+    steerTuner.update();
+
     // Run the gyro's periodic method
     gyro.periodic();
 
