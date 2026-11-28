@@ -8,6 +8,8 @@ import static edu.wpi.first.units.Units.Rotations;
 import static edu.wpi.first.units.Units.RotationsPerSecond;
 import static edu.wpi.first.units.Units.Volts;
 
+import java.util.function.BooleanSupplier;
+
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.VelocityVoltage;
 import com.ctre.phoenix6.controls.VoltageOut;
@@ -296,6 +298,23 @@ public class FeederSubsystem extends SubsystemBase {
   public Command stopCommand() {
     return run(this::stop)
       .withName("Feeder_Stop");
+  }
+
+  /**
+   * Feeds only while the supplied condition is true and stops the instant it
+   * goes false (flywheel sag, turret off target). Runs until interrupted.
+   * @param ready True when it's OK to feed
+   */
+  public Command feedWhenReadyCommand(BooleanSupplier ready) {
+    return run(() -> {
+      if (ready.getAsBoolean()) {
+        setRPM(FeederConstants.kFeedRPM);
+      } else {
+        stop();
+      }
+    })
+    .finallyDo(this::stop)
+    .withName("Feeder_FeedWhenReady");
   }
 
   // ----------------------------------------------------------------------------------------

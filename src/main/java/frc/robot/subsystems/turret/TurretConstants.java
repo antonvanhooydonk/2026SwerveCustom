@@ -41,10 +41,10 @@ public final class TurretConstants {
   // ------------------------------------------------------------
   // PID / Feedforward gains (tune with SysId)
   // ------------------------------------------------------------
-  public static final double kP = 0.1;
+  public static final double kP = 1.0;   // ~0.22 V per degree of error; raise until crisp, back off if it oscillates
   public static final double kI = 0.0;
   public static final double kD = 0.0;
-  public static final double kS = 0.0;
-  public static final double kV = 0.0;
+  public static final double kS = 0.10;
+  public static final double kV = 0.12;  // lets MotionMagic actually follow its profile
   public static final double kA = 0.0;
 }

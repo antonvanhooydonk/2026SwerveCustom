@@ -53,6 +53,13 @@ public final class DriveConstants {
   public static final double kStartPoseRotationToleranceDegrees = 0.5;
 
   // ------------------------------------------------------------
+  // Drift detection constants
+  // ------------------------------------------------------------
+  public static final double kDriftFineRad = Units.degreesToRadians(10.0);  // small drift: only trusted when stationary
+  public static final double kDriftGrossRad = Units.degreesToRadians(45.0); // above any timing skew: fixed even while driving
+  public static final int kDriftDebounceLoops = 10;                         // 0.2 s at 20 ms loops
+
+  // ------------------------------------------------------------
   // Vision fusion measurement settings
   // ------------------------------------------------------------  
   /**
@@ -66,21 +73,16 @@ public final class DriveConstants {
    */
   public static final double kVisionMaxTranslationJumpMeters = 1.0;
 
-  /**
-   * Maximum number of consecutive vision measurement rejections before forcing acceptance.
-   * This helps to account for genuine odometry drift rather than bad vision readings.
-   */
-  public static final int kMaxConsecutiveVisionRejections = 10;
+  /** A "jump" must persist this long, at a consistent location, before we believe it. */
+  public static final double kVisionJumpOverrideSeconds = 1.0;
+
+  /** Rejected jumps within this distance of each other count as the same streak. */
+  public static final double kVisionJumpConsistencyMeters = 0.5;
 
   // Reject vision while the robot is moving too fast for a clean camera frame (motion blur).
   // Rotation is the main culprit. Start here, then tune from logs.
   public static final double kVisionMaxAngularVelocityRadPerSec = 2.0;   // ~115 deg/s
   public static final double kVisionMaxLinearVelocityMetersPerSec = 4.0; // set very high to effectively disable
-
-  // Drift detection constants
-  public static final double kDriftFineRad = Units.degreesToRadians(10.0);  // small drift: only trusted when stationary
-  public static final double kDriftGrossRad = Units.degreesToRadians(45.0); // above any timing skew: fixed even while driving
-  public static final int kDriftDebounceLoops = 10;                         // 0.2 s at 20 ms loops
 
   // ============================================================
   // BELOW THIS LINE SHOULDN'T BE CHANGED AT COMPETITION

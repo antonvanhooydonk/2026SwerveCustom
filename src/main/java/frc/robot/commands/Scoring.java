@@ -1,7 +1,12 @@
 package frc.robot.commands;
 
+import java.util.function.Supplier;
+
+import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
+import edu.wpi.first.wpilibj2.command.button.Trigger;
 
 import frc.robot.Constants.FieldConstants;
 import frc.robot.shared.Utils;
@@ -40,51 +45,26 @@ public class Scoring {
     this.turretSubsystem = turretSubsystem;
   }
 
-  /**
-   * Score at the current alliance hub by auto-aiming and and auto-adjusting shooting
-   * power based on the distance to the hub.
-   * @return Command to auto-score at the current alliance hub
-   */
-  public Command scoreCommand() {
+  private Command shootAt(Supplier<Pose2d> targetSupplier) {
+    Supplier<Pose2d> turretPose = () -> turretSubsystem.getPose(driveSubsystem.getPose());
+    Supplier<ChassisSpeeds> fieldSpeeds = driveSubsystem::getFieldRelativeSpeeds;
+
+    // Rising-only debounce means this drops immediately when either condition fails
+    Trigger ready = flywheelSubsystem.isFlywheelAtTargetTrigger
+      .and(turretSubsystem.isAtTargetTrigger);
+
     return Commands.parallel(
-      flywheelSubsystem.shootAtPoseCommand(
-        () -> turretSubsystem.getPose(driveSubsystem.getPose()), 
-        () -> Utils.isRedAlliance() ? FieldConstants.kRedHubPose : FieldConstants.kBlueHubPose,
-        () -> driveSubsystem.getFieldRelativeSpeeds()
-      ),
-      turretSubsystem.aimAtPoseCommand(
-        () -> turretSubsystem.getPose(driveSubsystem.getPose()), 
-        () -> Utils.isRedAlliance() ? FieldConstants.kRedHubPose : FieldConstants.kBlueHubPose,
-        () -> driveSubsystem.getFieldRelativeSpeeds()
-      ),
-      Commands.waitUntil(
-        flywheelSubsystem.isFlywheelAtTargetTrigger
-        .and(turretSubsystem.isAtTargetTrigger)
-      ).andThen(feederSubsystem.feedCommand())
+      flywheelSubsystem.shootAtPoseCommand(turretPose, targetSupplier, fieldSpeeds),
+      turretSubsystem.aimAtPoseCommand(turretPose, targetSupplier, fieldSpeeds),
+      feederSubsystem.feedWhenReadyCommand(ready)
     );
   }
 
-  /**
-   * Pass fuel to the current alliance side by auto-aiming and and auto-adjusting shooting
-   * power based on the distance to the "catcher" poses.
-   * @return Command to auto-pass to the current alliance side
-   */
+  public Command scoreCommand() {
+    return shootAt(() -> Utils.isRedAlliance() ? FieldConstants.kRedHubPose : FieldConstants.kBlueHubPose);
+  }
+
   public Command passCommand() {
-    return Commands.parallel(
-      flywheelSubsystem.shootAtPoseCommand(
-        () -> turretSubsystem.getPose(driveSubsystem.getPose()), 
-        () -> Utils.isRedAlliance() ? FieldConstants.kRedPassPose : FieldConstants.kBluePassPose,
-        () -> driveSubsystem.getFieldRelativeSpeeds()
-      ),
-      turretSubsystem.aimAtPoseCommand(
-        () -> turretSubsystem.getPose(driveSubsystem.getPose()), 
-        () -> Utils.isRedAlliance() ? FieldConstants.kRedPassPose : FieldConstants.kBluePassPose,
-        () -> driveSubsystem.getFieldRelativeSpeeds()
-      ),
-      Commands.waitUntil(
-        flywheelSubsystem.isFlywheelAtTargetTrigger
-        .and(turretSubsystem.isAtTargetTrigger)
-      ).andThen(feederSubsystem.feedCommand())
-    );
+    return shootAt(() -> Utils.isRedAlliance() ? FieldConstants.kRedPassPose : FieldConstants.kBluePassPose);
   }
 }

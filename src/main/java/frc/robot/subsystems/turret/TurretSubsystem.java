@@ -74,7 +74,8 @@ public class TurretSubsystem extends SubsystemBase {
 
   // Cached target (for telemetry)
   private double currentAngleDegrees = 0.0;
-  private double targetAngleDegrees = 0.0;
+  private double targetAngleDegrees = 0.0;  // clamped to the safe range of motion
+  private double desiredAngleDegrees = 0.0; // unclamped, where we actually WANT to point
 
   // SysId routine
   private final SysIdRoutine turretSysIdRoutine;
@@ -280,6 +281,9 @@ public class TurretSubsystem extends SubsystemBase {
    * @param angleDegrees Target angle in degrees
    */
   private void setAngle(double angleDegrees) {
+    // Remember where we want to point, even if it's in the dead zone
+    desiredAngleDegrees = Utils.normalizeAngleDegrees(angleDegrees);
+
     // Clamp target to valid range
     targetAngleDegrees = MathUtil.clamp(
       Utils.normalizeAngleDegrees(angleDegrees), 
@@ -354,11 +358,15 @@ public class TurretSubsystem extends SubsystemBase {
   }
 
   /**
-   * Checks if the turret is at its target angle within tolerance
+   * Checks if the turret is at its desired angle within tolerance
    * @return True if at target
    */
   private boolean isAtAngle() {
-    return isAtAngle(targetAngleDegrees);
+    return MathUtil.isNear(
+      desiredAngleDegrees,
+      getAngleDegrees(),
+      TurretConstants.kAngleToleranceDegrees
+    );
   }
 
   /**

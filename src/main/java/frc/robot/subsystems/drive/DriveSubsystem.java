@@ -34,6 +34,7 @@ import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Transform2d;
+import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.kinematics.SwerveDriveKinematics;
 import edu.wpi.first.math.kinematics.SwerveDriveOdometry;
@@ -107,7 +108,8 @@ public class DriveSubsystem extends SubsystemBase {
   private long acceptedVisionCount = 0;
   private long rejectedVisionCount = 0;
   private long blurRejectedVisionCount = 0;
-  private long consecutiveRejectedJumps = 0;
+  private double jumpStreakStartSeconds = Double.NaN;
+  private Translation2d lastRejectedJump = null;
 
   // Alliance that the pose heading was last seeded for (empty = not seeded yet)
   private Optional<Alliance> seededAlliance = Optional.empty();
@@ -782,19 +784,28 @@ public class DriveSubsystem extends SubsystemBase {
         return;
       }
 
-      // Reject large translation jumps, UNLESS:
-      //  - we haven't accepted any vision yet (odometry-only pose may already be stale), or
-      //  - we've rejected several in a row (likely genuine drift, not a bad reading)
+      // Reject large translation jumps, UNLESS we haven't accepted any vision yet, or the same
+      // jump has persisted at a consistent location for kVisionJumpOverrideSeconds (genuine drift).
+      // A single bad camera can't win: any accepted measurement from a good camera resets the streak.
       double translationDistance = getPose().getTranslation().getDistance(visionPose.getTranslation());
       boolean isJump = translationDistance > DriveConstants.kVisionMaxTranslationJumpMeters;
-      boolean shouldGateJump = isJump
-        && acceptedVisionCount > 0
-        && consecutiveRejectedJumps < DriveConstants.kMaxConsecutiveVisionRejections;
 
-      if (shouldGateJump) {
-        rejectedVisionCount++;
-        consecutiveRejectedJumps++;
-        return;
+      if (isJump && acceptedVisionCount > 0) {
+        Translation2d jumpTo = visionPose.getTranslation();
+        boolean sameStreak = lastRejectedJump != null
+          && lastRejectedJump.getDistance(jumpTo) < DriveConstants.kVisionJumpConsistencyMeters;
+
+        if (!sameStreak || Double.isNaN(jumpStreakStartSeconds)) {
+          jumpStreakStartSeconds = now;   // new streak
+        }
+
+        lastRejectedJump = jumpTo;
+
+        if (now - jumpStreakStartSeconds < DriveConstants.kVisionJumpOverrideSeconds) {
+          rejectedVisionCount++;
+          return;
+        }
+        // Persisted and consistent: fall through and accept
       }
 
       // If we make it here => add vision measurement to pose estimator
@@ -806,7 +817,6 @@ public class DriveSubsystem extends SubsystemBase {
 
       // Increment the count of accepted vision measurements for monitoring purposes
       acceptedVisionCount++;
-      consecutiveRejectedJumps = 0;
     } catch (Exception ex) {
       Utils.logError("Error adding vision measurement: " + ex.getMessage());
     }

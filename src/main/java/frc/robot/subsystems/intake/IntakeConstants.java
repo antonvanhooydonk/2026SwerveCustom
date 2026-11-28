@@ -22,11 +22,10 @@ public final class IntakeConstants {
   public static final double kRollerMinSpinningRPM  = 100.0;  // RPM threshold to consider roller spinning
   
   // It is crucial to set these limits correctly to prevent mechanical damage. 
-  public static final double kP = 1.0;   // Proportional term
-  public static final double kI = 0.0;   // Integral term
-  public static final double kD = 0.0;   // Derivative term
-  public static final double kS = 0.0;   // Static feedforward
-  public static final double kV = 0.0;   // Velocity feedforward
-  public static final double kA = 0.0;   // Acceleration feedforward 
- 
+  public static final double kP = 0.25;
+  public static final double kI = 0.0;
+  public static final double kD = 0.0;
+  public static final double kS = 0.10;
+  public static final double kV = 0.12;  // ~12 V / 100 rps free speed
+  public static final double kA = 0.0; 
 }
